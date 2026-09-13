@@ -7,13 +7,23 @@ This phase produces a result that **stands alone even if Phase 3 is never built*
 written, evidenced account of where the wave model is systematically wrong off the Israeli
 coast. Treat it as the deliverable, not as feature engineering for the next phase.
 
-**Updated after Phase 0's scope verdict (`docs/DATA_SOURCES.md`):** there was no historical
-data to align — zero pre-existing (forecast, measurement) pairs exist anywhere. This phase
-therefore runs against whatever has accumulated live since Phase 1 went live, and only
-against the Hadera buoy (Ashdod/Haifa are not ingested). It is **not a one-time study** —
-build it as a report that reruns on demand and grows as more history accumulates, and say
-plainly, every time it runs, how much history it actually has. Early runs will have too
-little data to conclude much; that is expected, not a bug to work around.
+**Updated after the Phase 0 correction (`docs/DATA_SOURCES.md`):** this is a real
+historical study, on real data. Ground truth is **DeepLev** — roughly 21 months overlapping
+the Open-Meteo archive, about 15,000 hourly pairs across two full winters (deployments 7,
+8, 9). Hadera is an optional supplementary station, tiny by comparison; Ashdod/Haifa remain
+unavailable.
+
+Two things this phase measures, which must not be conflated:
+
+- **Model-vs-reality bias** — what DeepLev supports. The archived Open-Meteo value is one
+  analysis-like value per `valid_at`, not a forecast issued with a lead time. This is the
+  bulk of the stage-1 claim and it is fully analysable today.
+- **Forecast error growth with lead time** — *not* obtainable historically. Open-Meteo has
+  no forecast-as-issued archive (tested directly). This dimension only becomes available
+  from live accumulation after Phase 1 goes live, so report it as pending, not as zero.
+
+Build it so it reruns on demand: the DeepLev portion is static and will not change, but the
+live-accumulated portion grows, and the lead-time section fills in over time.
 
 ---
 
@@ -57,8 +67,10 @@ Break down by, at minimum:
 - **height regime** (flat / small / rideable / big — pick thresholds that mean something
   for surf, and say what they are);
 - **forecast lead time** (0–6 h, 6–24 h, 24–48 h, 48 h+);
-- **buoy** — in practice just Hadera for now; keep the column so Ashdod/Haifa slot in
-  later without a schema change.
+- **station** — DeepLev for the historical study; keep the column so Hadera and, if access
+  is ever granted, Ashdod/Haifa slot in without a schema change. Never pool stations into a
+  single bias number without showing the per-station split: they are different instruments
+  at different depths and distances offshore.
 
 And the interactions worth looking at: direction × height regime, lead time × height
 regime. The planning doc's hypothesis is that bias depends on swell direction, season and
@@ -78,15 +90,20 @@ guard it deliberately.
   bias by direction bucket, bias by height regime, bias by lead time, forecast-vs-measured
   scatter with the 1:1 line.
 - Written findings in plain prose: what is systematically wrong, where, and by how much.
-- **A limitations section.** One buoy (Hadera) only, not three — Ashdod and Haifa are
-  unavailable (`docs/DATA_SOURCES.md`); Hadera's own depth and offshore distance are
-  themselves unresolved, so treat its comparability to a "deep-water regional anchor" as
-  unconfirmed, not assumed; the sample is only what has accumulated since Phase 1 launch,
-  stated in days/weeks, not a multi-year study.
-- A one-paragraph verdict, **dated**, on whether there is enough exploitable structure yet
-  for a trained model (Phase 3) to be worth attempting, or whether the live bias tracker
-  should keep running as the only calibration mechanism for now. Re-run this verdict each
-  time the report regenerates — it should change as history accumulates.
+- **A limitations section.** DeepLev sits 50 km off *Haifa* — applying its correction
+  150 km south off Ashdod assumes the model's bias is regionally coherent, which is
+  defensible for open-coast deep water in one basin but is an assumption, not a result.
+  Coverage ends March 2024, so the correction may be stale against a model that has since
+  changed. A submerged ADCP is not a surface-following waverider. Deployment 8 has
+  documented data loss. And deep water is not the surf break: this validates the *offshore*
+  layer only — the per-beach translation in Phase 4 stays unvalidated regardless of how good
+  these numbers look.
+- A one-paragraph verdict on whether there is exploitable structure for Phase 3, and which
+  features look predictive. Also **cross-check against prior art**: the DeepLev ESSD paper
+  compared these same observations against CMEMS-WAM and found strong Hs correlation, a
+  negative mean-period bias, and model underestimation of high waves. If our findings
+  disagree sharply with a peer-reviewed comparison, the default assumption is that ours are
+  wrong — investigate before publishing the disagreement.
 
 Reproducible end to end from one command against the local DB — `docker compose run --rm
 api python -m app.analysis.bias` or equivalent. No notebook-only results; if you use a

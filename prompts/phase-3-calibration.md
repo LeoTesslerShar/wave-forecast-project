@@ -3,20 +3,28 @@
 Read `PROMPT.md`, `docs/PLANNING.md` (§6 Phase 3), `docs/DATA_SOURCES.md`, and
 `docs/BIAS_ANALYSIS.md` first.
 
-**Phase 0's scope verdict already settled this: build the live bias tracker in §A below,
-not a trained model.** There are zero historical (forecast, measurement) pairs from any
-source (`docs/DATA_SOURCES.md`) — not a thin sample, zero — so there is nothing to train
-on yet. Section B (the originally-planned trained model) is kept in this prompt as the
-**next phase to run later**, once Phase 2's live-accumulating report shows enough history
-— do not attempt it now. Re-check Phase 2's dated verdict before ever starting section B;
-if it still says the sample is too thin, don't.
+**Superseded by the Phase 0 correction: build the trained model in section B. It is the
+main event, not a deferred one.** DeepLev gives roughly 15,000 hourly (model, measured)
+pairs across two full winters, which is enough to train and validate properly
+(`docs/DATA_SOURCES.md`).
+
+Section A (the live bucketed bias tracker) is still built, but its role has changed: it is
+no longer a substitute for a model, it is the **staleness check on one**. DeepLev coverage
+ends March 2024 and today is 2026 — the tracker is what tells you whether a correction
+trained on 2021-24 data still holds against the model as it behaves now. Build B, then A,
+and have A report drift against B.
+
+**One dimension stays out of the model:** lead time. Open-Meteo has no forecast-as-issued
+archive (tested directly), so historical pairs have no meaningful lead-time spread. Do not
+put lead time in the historical feature set — it would be a constant wearing a variable's
+name. It enters only once live accumulation provides it.
 
 Hard rule 2 governs this entire phase: the baseline is the raw uncorrected forecast, and
 whatever the comparison says is what gets reported.
 
 ---
 
-## A. Build this now — live bias tracker
+## A. Live bias tracker — the staleness check on section B
 
 As Phase 1 accumulates forecasts and Hadera measurements, continuously compute and store
 running bias by direction bucket, height regime and lead time (same bucket definitions as
@@ -53,24 +61,23 @@ Run and paste:
 
 ## Then stop
 
-Report the current bucket coverage and the dated model-readiness projection, then wait.
-Do not proceed to section B until Phase 2's regenerated verdict says the sample supports
-it — that will be a future session's call, not this one's.
+Report both: the trained model's test-set performance against baseline (section B), and the
+live tracker's current drift against it (section A). If the live drift is large, the
+historical correction has gone stale and that is the headline, not a footnote.
 
 ---
 
-## B. Later — trained model, once history supports it
+## B. Trained model — build this
 
-**Do not build this now.** Kept here, unedited from the original plan, so a future session
-has it ready the day Phase 2's verdict turns positive. Re-read `docs/BIAS_ANALYSIS.md`'s
-latest verdict before starting any of this.
+Train on DeepLev-derived pairs. Read `docs/BIAS_ANALYSIS.md` first for which features
+actually showed structure.
 
 ## 1. Setup
 
 - **Features:** forecast wave height, wave period, wave direction (as sin/cos, not degrees
   — 359° and 1° are adjacent, and a tree or a linear model will not know that), wind speed
-  and direction, lead time, month (also cyclical), buoy id, and anything Phase 2 found
-  predictive.
+  and direction, month (also cyclical), station id, and anything Phase 2 found predictive.
+  **Not lead time** — see the header; historical pairs have no lead-time spread.
 - **Target:** measured wave height. Period optionally, as a second model, only after height
   works.
 - **Baseline:** raw forecast wave height, unmodified. Its MAE and RMSE on the test set are
@@ -82,7 +89,11 @@ A random train/test split on time series leaks the future into the past and prod
 meaningless score. The planning doc says this matters; this prompt makes it mechanical.
 
 - Split by time: train on earlier, test on later. State the cut date and the resulting
-  sizes.
+  sizes. **The DeepLev deployments hand you a naturally clean split: train on deployments
+  7-8 (to 30 Aug 2022), test on deployment 9 (23 Feb 2023 - 5 Mar 2024).** They are
+  separated by a ~6-month physical gap in which the instrument was not in the water, so
+  leakage across the boundary is structurally impossible rather than merely asserted. Use
+  it unless there is a reason not to, and say so if you deviate.
 - **Write a test that fails if `max(train.valid_at) >= min(test.valid_at)`.** It runs in
   CI. Discipline is not a safeguard; an assertion is.
 - Any cross-validation uses expanding-window / forward-chaining folds, never `KFold` or

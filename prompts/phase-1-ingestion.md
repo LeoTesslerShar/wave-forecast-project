@@ -10,13 +10,33 @@ This is the foundation. Everything later reads from what this phase writes, so t
 that look like plumbing — idempotency, gap detection, the `issued_at`/`valid_at` pair —
 are the actual deliverable.
 
-**Updated after Phase 0 (see `docs/DATA_SOURCES.md`):** there is no historical
-forecast-as-issued data and no historical buoy data anywhere — the scope verdict found
-zero pre-existing (forecast, measurement) pairs. Everything this phase ingests starts
-accumulating from the day it goes live; there is no deep backfill to run. This changes
-two things below from what a first read of the planning doc would suggest: backfill means
-catching *missed scheduled runs*, not reconstructing history; and only the Hadera buoy is
-wired up, not all three.
+**Updated after the Phase 0 correction (see `docs/DATA_SOURCES.md`):**
+
+- There is still **no historical forecast-as-issued data** — lead-time pairs accumulate only
+  from the day this goes live, so backfill means catching *missed scheduled runs*, not
+  reconstructing history.
+- But there **is** substantial historical *measurement* data: **DeepLev**, ~21 months
+  overlapping the Open-Meteo archive, arriving as bulk NetCDF rather than a live feed.
+
+So the schema must serve two shapes of measurement at once, and this is the main thing to
+get right in this phase:
+
+1. **Live trickle** — Hadera, one reading per hour, arriving forever.
+2. **Bulk historical import** — DeepLev, ~15k hourly rows landing in one go, from files.
+
+Requirements that follow, all of which are cheaper now than as a migration later:
+
+- `measurements` carries a **station** reference, not a "buoy" assumption — DeepLev is a
+  subsurface ADCP mooring, not a buoy, and the instrument type changes how its error should
+  be read.
+- **Instrument and provenance columns:** instrument type, deployment id, measurement depth,
+  distance offshore, and whether the row arrived live or by bulk import. Phase 2 needs to
+  split on all of these; recovering them later is impossible.
+- **Parameter identity is explicit.** DeepLev reports Hm0, Hmax, Tp, Tm02, energy period,
+  peak *and* mean direction. Hadera reports Hs, Tp, Hmax. These are not interchangeable —
+  Hs/Hm0 vs Hmax especially. One column per distinct parameter, or an explicit
+  parameter-type column; never a generic `wave_height` that silently mixes them.
+- Only the Hadera buoy is wired as a live feed. Ashdod/Haifa stay modelled but inactive.
 
 ---
 

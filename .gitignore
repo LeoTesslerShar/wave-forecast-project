@@ -14,3 +14,5 @@ node_modules/
 model_artifacts/
 .DS_Store
 Thumbs.db
+data/raw/
+*.nc
