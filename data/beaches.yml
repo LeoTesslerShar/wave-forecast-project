@@ -1,0 +1,82 @@
+# Seed beach coordinates -- prompts/phase-1-ingestion.md section 2.
+#
+# Coordinate source: approximate, read off public map services (OpenStreetMap /
+# Google Maps) at the known surf break for each spot, 2026-09-14. NOT surveyed, NOT
+# validated against any authoritative source. These are starting points for the
+# shoreline-bearing computation in Phase 2, which explicitly requires reviewing every
+# computed bearing against a map -- treat these coordinates with the same scrutiny.
+#
+# shoreline_bearing is intentionally absent here -- Phase 2 computes and writes it.
+
+beaches:
+  - id: bat_yam
+    name: "Bat Yam"
+    lat: 32.0133
+    lon: 34.7432
+
+  - id: herzliya
+    name: "Herzliya"
+    lat: 32.1660
+    lon: 34.7960
+
+  - id: palmachim
+    name: "Palmachim"
+    lat: 31.9300
+    lon: 34.6940
+
+  - id: netanya
+    name: "Netanya (Sironit)"
+    lat: 32.3210
+    lon: 34.8490
+
+  - id: ashdod
+    name: "Ashdod (Lido)"
+    lat: 31.7830
+    lon: 34.6290
+
+  - id: hadera
+    name: "Hadera"
+    lat: 32.4370
+    lon: 34.8830
+
+  - id: olga
+    name: "Olga"
+    lat: 32.4000
+    lon: 34.8700
+
+  - id: tel_aviv_hilton
+    name: "Tel Aviv (Hilton)"
+    lat: 32.0870
+    lon: 34.7690
+
+buoys:
+  - id: hadera_isramar
+    name: "Hadera (ISRAMAR)"
+    lat: 32.470
+    lon: 34.880
+    source: isramar
+    active: true
+    licence_note: >
+      IOLR "All Rights Reserved" notice found on the station page
+      (docs/DATA_SOURCES.md) -- written permission not yet obtained.
+      Do not redistribute this data outside personal/research use.
+
+  - id: ashdod_cameri
+    name: "Ashdod (CAMERI)"
+    lat: 31.83
+    lon: 34.63
+    source: cameri
+    active: false
+    licence_note: >
+      No accessible endpoint -- ADVA requires a gated API request
+      (docs/DATA_SOURCES.md). Modelled but not ingested.
+
+  - id: haifa_cameri
+    name: "Haifa (CAMERI)"
+    lat: 32.83
+    lon: 34.97
+    source: cameri
+    active: false
+    licence_note: >
+      No accessible endpoint -- ADVA requires a gated API request
+      (docs/DATA_SOURCES.md). Modelled but not ingested.
