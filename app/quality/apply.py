@@ -17,7 +17,15 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
     exposure = build_exposure_estimate(beach, forecast)
 
     size_q = classify_size(exposure.wave_height_estimate)
-    period_q = classify_period(forecast.wave_period)
+
+    # app/quality/period.py's bands are written for PEAK period (Tp). forecast.wave_period
+    # is the MEAN period (Tm) from a different model and runs ~20-25% lower, so feeding it
+    # in unflagged silently under-rated every forecast -- see docs/DECISIONS.md. Prefer the
+    # real Tp; fall back to the mean only when it is genuinely missing, and say which was
+    # used rather than presenting the two as interchangeable.
+    period_s = forecast.wave_peak_period if forecast.wave_peak_period is not None else forecast.wave_period
+    period_is_peak = forecast.wave_peak_period is not None
+    period_q = classify_period(period_s)
     wind_q = classify_wind(
         wind_speed_kmh=forecast.wind_speed_10m,
         wind_direction_from=forecast.wind_direction_10m,
@@ -32,7 +40,7 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
         beach_id=beach.id,
         valid_at=forecast.valid_at,
         size=exposure,
-        period_s=forecast.wave_period,
+        period_s=period_s,
         period_band=period_q.band,
         wind=QualityWindOut(
             speed_kmh=forecast.wind_speed_10m,
@@ -48,7 +56,11 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
         quality_reasoning=verdict.reasoning,
         confidence=QualityConfidence(
             size="unvalidated_heuristic",
-            period=f"measured_uncertainty ~{PERIOD_UNCERTAINTY_S:.0f}s",
+            period=(
+                f"measured_peak_period_tp ~{PERIOD_UNCERTAINTY_S:.0f}s"
+                if period_is_peak
+                else "substituted_mean_period_tm -- peak period unavailable, bands assume Tp so this reads LOW"
+            ),
             wind="measured_forecast",
             chop="unvalidated_heuristic",
             quality_verdict="unvalidated_heuristic",

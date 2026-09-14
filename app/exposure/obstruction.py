@@ -12,7 +12,19 @@ This is a deliberately coarse heuristic, not a real diffraction/shadowing model:
     width;
   - the check range (1500 m) and lateral threshold (150 m) are judgment calls with no
     ground truth to tune them against -- see docs/DECISIONS.md;
-  - a hit reduces exposure by a flat OBSTRUCTION_STRENGTH rather than a modelled amount.
+  - the reduction is scaled by how directly the ray passes the structure, but that scaling
+    is linear in distance for want of anything better -- it is not a modelled shadow.
+
+The reduction is GRADED, not binary: a ray passing straight over a breakwater
+(lateral ~0 m) gets the full OBSTRUCTION_STRENGTH, one grazing past at nearly
+OBSTRUCTION_LATERAL_THRESHOLD_M gets almost nothing. This replaced an earlier flat
+all-or-nothing penalty that made the whole exposure model discontinuous: Herzliya went
+from a full 40% reduction at a 295 degree swell to zero at 296 degrees, a 1-degree flip,
+purely because its coordinate sits ~93 m from the marina breakwater and the ray's closest
+approach crossed the 150 m threshold there. tests/test_exposure_geometry.py's own
+Bat-Yam-vs-Herzliya known-truth case sits only 4 degrees off that cliff, and a real
+forecast (swell from 293 degrees) landed on the wrong side of it, reporting Herzliya ~40%
+smaller than Palmachim despite a HIGHER offshore height. See docs/DECISIONS.md.
 
 It exists because the planning doc's own example (Bat Yam vs Herzliya) is partly a
 directional-exposure effect and partly a real marina/breakwater effect, and ignoring
@@ -44,7 +56,8 @@ from app.exposure.geo_utils import LocalProjection, destination_point
 OBSTRUCTION_CHECK_RANGE_M = 1500.0
 OBSTRUCTION_STEP_M = 100.0
 OBSTRUCTION_LATERAL_THRESHOLD_M = 150.0
-OBSTRUCTION_STRENGTH = 0.4  # flat reduction applied to directional exposure on a hit
+OBSTRUCTION_STRENGTH = 0.4  # MAXIMUM reduction, applied when the ray passes straight over
+# a structure; scaled linearly down to 0 at OBSTRUCTION_LATERAL_THRESHOLD_M (see docstring)
 
 # A structure within this distance of the beach coordinate ITSELF (not a ray sample) is
 # almost always something immediately alongside the access point -- a small jetty at the
@@ -126,20 +139,26 @@ def _distance_to_nearest_structure(lat: float, lon: float, proj: LocalProjection
     return best
 
 
-def _within_threshold_of_structure(lat: float, lon: float, proj: LocalProjection, threshold_m: float) -> bool:
-    """Grid-indexed threshold check -- only inspects segments in the sample's own cell and
-    its 8 neighbours, not all ~226 structure lines. Correct given GRID_CELL_M >=
-    threshold_m: any segment within threshold_m of (px, py) has at least one point within
-    threshold_m, which places it in the same cell as (px, py) or an adjacent one."""
+def _nearest_structure_within(lat: float, lon: float, proj: LocalProjection, threshold_m: float) -> float:
+    """Distance to the nearest structure, grid-indexed -- only inspects segments in the
+    sample's own cell and its 8 neighbours, not all ~226 structure lines. Correct given
+    GRID_CELL_M >= threshold_m: any segment within threshold_m of (px, py) has at least one
+    point within threshold_m, which places it in the same cell as (px, py) or an adjacent
+    one. Returns inf when nothing is within threshold_m -- the result is therefore EXACT
+    whenever it is <= threshold_m, which is the only range the caller grades on, but must
+    not be read as a true global nearest distance beyond that (use
+    _distance_to_nearest_structure for that)."""
     px, py = proj.to_xy(lat, lon)
     gx, gy = _cell_of(px, py)
     grid = _structure_grid(proj.ref_lat)
+    best = float("inf")
     for dx in (-1, 0, 1):
         for dy in (-1, 0, 1):
             for a, b in grid.get((gx + dx, gy + dy), ()):
-                if _distance_point_to_segment(px, py, a, b) <= threshold_m:
-                    return True
-    return False
+                d = _distance_point_to_segment(px, py, a, b)
+                if d < best:
+                    best = d
+    return best if best <= threshold_m else float("inf")
 
 
 def obstruction_fraction(
@@ -149,18 +168,28 @@ def obstruction_fraction(
     *,
     max_range_m: float = OBSTRUCTION_CHECK_RANGE_M,
 ) -> float:
-    """0.0 (clear) or OBSTRUCTION_STRENGTH (a structure sits in the swell's path) -- not a
-    continuous value, since the underlying check is a proximity threshold, not a measured
-    shadow angle. Returns 0.0 immediately if no structures are loaded at all."""
+    """0.0 (clear) up to OBSTRUCTION_STRENGTH (the ray passes straight over a structure),
+    scaled linearly by the ray's CLOSEST approach to any structure -- see the module
+    docstring for why this is graded rather than all-or-nothing. Returns 0.0 immediately if
+    no structures are loaded at all.
+
+    Every sample is checked rather than returning on the first one inside the threshold:
+    the grade depends on the closest approach along the whole ray, so an early grazing pass
+    must not mask a later direct hit."""
     if not structure_lines():
         return 0.0
 
     proj = LocalProjection(ref_lat=lat)
     steps = max(1, int(max_range_m // OBSTRUCTION_STEP_M))
     start_step = max(1, int(OBSTRUCTION_MIN_CHECK_DISTANCE_M // OBSTRUCTION_STEP_M))
+    closest = float("inf")
     for i in range(start_step, steps + 1):
         dist = i * OBSTRUCTION_STEP_M
         sample_lat, sample_lon = destination_point(lat, lon, swell_direction_from, dist)
-        if _within_threshold_of_structure(sample_lat, sample_lon, proj, OBSTRUCTION_LATERAL_THRESHOLD_M):
-            return OBSTRUCTION_STRENGTH
-    return 0.0
+        d = _nearest_structure_within(sample_lat, sample_lon, proj, OBSTRUCTION_LATERAL_THRESHOLD_M)
+        if d < closest:
+            closest = d
+
+    if closest > OBSTRUCTION_LATERAL_THRESHOLD_M:
+        return 0.0
+    return round(OBSTRUCTION_STRENGTH * (1.0 - closest / OBSTRUCTION_LATERAL_THRESHOLD_M), 3)

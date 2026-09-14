@@ -460,3 +460,68 @@ now also asserts face height is an exact, fixed multiple of the already-computed
 estimate (never an independent computation that could drift out of step), and
 `test_face_height_is_a_labelled_multiple_of_significant_height_not_a_new_measurement`
 pins the multiplier's sign and the confidence label directly.
+
+## 2026-09-14 -- Two real bugs found from one user report: binary obstruction cliff, Tm/Tp mixup
+
+User report: Palmachim showed 1.12m (face height) for Saturday 19/09, Herzliya only 0.67m
+(later 0.5m at a different hour) -- despite Herzliya's offshore forecast being the HIGHER
+of the two (0.64m vs 0.62m Hs). Investigated by pulling both beaches' full component
+breakdown rather than guessing.
+
+**Bug 1: obstruction was a flat, binary penalty.** `obstruction_fraction` returned exactly
+0.0 or the full `OBSTRUCTION_STRENGTH` (40%) depending only on whether the ray's closest
+approach to any structure was inside or outside `OBSTRUCTION_LATERAL_THRESHOLD_M` (150m) --
+no gradient at all. Swept every 1-degree swell direction against Herzliya and found the
+model flips from a full 40% reduction to zero between 295 and 296 degrees, purely because
+its beach coordinate sits ~93m from the marina breakwater and the ray's closest approach to
+it crosses 150m right there. `tests/test_exposure_geometry.py`'s own known-truth test
+(Bat Yam vs Herzliya) sits only 4 degrees off that cliff. Saturday's real forecast (swell
+293 degrees) landed on the wrong side of it: a ray grazing the breakwater at 135m (10% short
+of clearing the threshold) took the SAME full penalty as a ray crossing dead-center at 0m.
+
+Fixed by grading the reduction linearly by closest approach:
+`OBSTRUCTION_STRENGTH * (1 - closest_approach_m / OBSTRUCTION_LATERAL_THRESHOLD_M)`,
+clamped to 0 outside the threshold. A direct hit (closest ~0m) still gets the full 40%;
+a graze near the edge gets almost nothing; nothing in between is now a cliff. Verified
+against Bat Yam, whose ray crosses a real breakwater near dead-center (~13m) at the same
+swell direction -- it correctly keeps ~37% (barely graded down from 40%), so this is not a
+blanket weakening of obstruction, only removal of the discontinuity. Linear-in-distance is
+still a judgement call with no ground truth to fit against, same caveat as the threshold
+and check-range constants -- this is a smoother heuristic, not a validated shadow model.
+`_within_threshold_of_structure` (boolean) became `_nearest_structure_within` (returns the
+distance, or inf outside the threshold) so the caller can grade on it; the grid-index
+correctness test was tightened to assert the grid distance is EXACT inside the threshold,
+not just a correct yes/no, since the graded penalty now depends on that value directly.
+Regression test: `tests/test_exposure_obstruction.py::test_obstruction_is_graded_by_closest_approach_not_all_or_nothing`.
+
+**Bug 2: `forecast.wave_period` is the wrong period.** Open-Meteo's `best_match` marine
+model's `wave_period` is MEAN period (Tm), not peak period (Tp) -- confirmed directly by
+requesting `wave_peak_period` on `best_match` and getting `None` for every hour. Tm runs
+roughly 20-25% below Tp for the same sea state (confirmed: Saturday noon showed Tm 5.6s vs
+a real Tp of 6.0s from a different model, and the app was quoting Tm as if it were Tp).
+`app/quality/period.py`'s band boundaries (WEAK_PERIOD_S=6, GOOD_PERIOD_S=8) are written
+for Tp -- feeding Tm in unflagged silently under-rated every single forecast, and is most
+likely the source of the "5s vs 7s" gap against another app reported alongside the
+obstruction bug. Separately, `period.py`'s docstring claimed the 1s uncertainty band was
+"~0.97s MAE against DeepLev (docs/BIAS_ANALYSIS.md)" -- checked, and that analysis
+validates wave HEIGHT only and contains no period comparison at all; the figure looks like
+a misreading of the unrelated 0.973 height correlation. Corrected the docstring to say the
+uncertainty is assumed, not measured, rather than let a fabricated citation stand.
+
+Fixed by fetching real Tp from a second model, `ecmwf_wam025`, which does carry
+`wave_peak_period` (`app/clients/open_meteo_marine.py fetch_peak_period_live`) --
+requested and parsed independently of the main wave/wind fetch, allowed to fail on its own
+without failing the whole forecast row (same graceful-degradation discipline as every other
+upstream). New nullable column `Forecast.wave_peak_period`
+(`alembic/versions/427208cad892_add_wave_peak_period_to_forecasts.py`, no backfill --
+existing rows genuinely were never given a real Tp and a converted value would fabricate a
+measurement that was never made). `app/quality/apply.py` prefers it and falls back to the
+mean period only when peak is genuinely absent, and says which one was used in
+`confidence.period` (`"measured_peak_period_tp ~1s"` vs `"substituted_mean_period_tm --
+peak period unavailable, bands assume Tp so this reads LOW"`) rather than presenting the
+two as interchangeable. Height still comes from `best_match`
+(docs/BIAS_ANALYSIS.md's validated model, correlation 0.973 against DeepLev) -- height and
+period now come from two different models describing the same sea, which is an accepted
+tradeoff against inventing an unvalidated Tm->Tp conversion factor where real Tp data
+exists instead. Regression test:
+`tests/test_quality_api.py::test_peak_period_preferred_over_mean_period_when_available`.

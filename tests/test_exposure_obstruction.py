@@ -6,16 +6,47 @@ from app.exposure.obstruction import (
     OBSTRUCTION_LATERAL_THRESHOLD_M,
     OBSTRUCTION_STRENGTH,
     _distance_to_nearest_structure,
-    _within_threshold_of_structure,
+    _nearest_structure_within,
     obstruction_fraction,
 )
 
 
-def test_returns_zero_or_the_flat_strength_never_in_between():
+def test_stays_within_zero_and_the_maximum_strength():
     lat, lon = 32.1660, 34.7960  # herzliya
     for swell_dir in range(0, 360, 30):
         f = obstruction_fraction(lat, lon, swell_dir)
-        assert f in (0.0, OBSTRUCTION_STRENGTH)
+        assert 0.0 <= f <= OBSTRUCTION_STRENGTH
+
+
+def test_obstruction_is_graded_by_closest_approach_not_all_or_nothing():
+    """Regression test for the binary-penalty bug (docs/DECISIONS.md): obstruction used to
+    be a flat OBSTRUCTION_STRENGTH the moment anything came within
+    OBSTRUCTION_LATERAL_THRESHOLD_M, which made the model discontinuous -- Herzliya took the
+    FULL 40% reduction at a 295 degree swell and zero at 296, because its coordinate sits
+    ~93m from the marina breakwater and the ray's closest approach crossed the threshold
+    right there. A real forecast (swell from 293 degrees) landed on the wrong side of that
+    cliff and reported Herzliya ~40% smaller than Palmachim despite a HIGHER offshore
+    height. Grading by closest approach removes the cliff without inventing new physics."""
+    herzliya = (32.1660, 34.7960)
+
+    # Either side of the old cliff: must now differ by a little, not by the full strength.
+    near_cliff = obstruction_fraction(*herzliya, 295.0)
+    past_cliff = obstruction_fraction(*herzliya, 296.0)
+    assert past_cliff == 0.0
+    assert 0.0 < near_cliff < 0.1 * OBSTRUCTION_STRENGTH, (
+        f"a ray grazing the threshold should be nearly unobstructed, got {near_cliff}"
+    )
+
+    # The swell direction that exposed the bug: a graze, so only a token reduction.
+    assert 0.0 < obstruction_fraction(*herzliya, 293.0) < 0.2 * OBSTRUCTION_STRENGTH
+
+    # Bat Yam at the same swell: the ray crosses a structure almost head-on (~13m), so it
+    # must still take nearly the full reduction -- grading must not defang real blocking.
+    bat_yam_direct = obstruction_fraction(32.0133, 34.7432, 293.0)
+    assert bat_yam_direct > 0.8 * OBSTRUCTION_STRENGTH, (
+        f"a ray passing within ~13m of a breakwater must still be heavily blocked, "
+        f"got {bat_yam_direct}"
+    )
 
 
 def test_varies_by_direction_not_constant():
@@ -88,10 +119,15 @@ def test_grid_threshold_check_agrees_with_exhaustive_scan():
             for dist in range(300, 1600, 100):
                 sample_lat, sample_lon = destination_point(lat, lon, swell_dir, dist)
                 exhaustive = _distance_to_nearest_structure(sample_lat, sample_lon, proj)
-                grid_hit = _within_threshold_of_structure(
+                grid = _nearest_structure_within(
                     sample_lat, sample_lon, proj, OBSTRUCTION_LATERAL_THRESHOLD_M
                 )
-                assert grid_hit == (exhaustive <= OBSTRUCTION_LATERAL_THRESHOLD_M), (
-                    f"grid/exhaustive disagreement at ({sample_lat}, {sample_lon}): "
-                    f"exhaustive nearest={exhaustive}, grid_hit={grid_hit}"
-                )
+                if exhaustive <= OBSTRUCTION_LATERAL_THRESHOLD_M:
+                    # Inside the threshold the grid result must be EXACT, not just a
+                    # correct yes/no -- the graded penalty is computed from this distance.
+                    assert grid == exhaustive, (
+                        f"grid/exhaustive disagreement at ({sample_lat}, {sample_lon}): "
+                        f"exhaustive={exhaustive}, grid={grid}"
+                    )
+                else:
+                    assert grid == float("inf")

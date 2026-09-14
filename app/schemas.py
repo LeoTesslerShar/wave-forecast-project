@@ -24,7 +24,8 @@ class ForecastOut(BaseModel):
 
     wave_height: float | None
     wave_direction: float | None
-    wave_period: float | None
+    wave_period: float | None  # MEAN period (Tm) -- see app/models.py Forecast
+    wave_peak_period: float | None  # real peak period (Tp), second model, may be absent
     swell_wave_height: float | None
     swell_wave_direction: float | None
     swell_wave_period: float | None

@@ -57,6 +57,25 @@ async def ingest_forecasts_for_beach(
             logger, logging.WARNING, "wave fetch failed", beach_id=beach.id, error=str(exc)
         )
 
+    # Peak period comes from a second model and is allowed to fail on its own: it is a
+    # scoring refinement, not a reason to drop an otherwise complete forecast row. Skipped
+    # entirely on the backfill path, which has no peak-period archive equivalent.
+    peak_rows: list[dict] = []
+    if not backfilled:
+        try:
+            payload = await open_meteo_marine.fetch_peak_period_live(
+                client, beach.lat, beach.lon, forecast_days
+            )
+            peak_rows = open_meteo_marine.parse_peak_period_hourly(payload)
+        except (UpstreamError, httpx.HTTPError) as exc:
+            log_event(
+                logger,
+                logging.WARNING,
+                "peak period fetch failed -- falling back to mean period",
+                beach_id=beach.id,
+                error=str(exc),
+            )
+
     wind_rows: list[dict] = []
     wind_failed = False
     try:
@@ -78,7 +97,7 @@ async def ingest_forecasts_for_beach(
     if wave_failed and wind_failed:
         raise UpstreamError(f"both wave and wind upstreams failed for beach {beach.id}")
 
-    merged = _merge(wave_rows, wind_rows)
+    merged = _merge(wave_rows, wind_rows, peak_rows)
 
     rows_written = 0
     for row in merged:
@@ -89,6 +108,7 @@ async def ingest_forecasts_for_beach(
             wave_height=row.get("wave_height"),
             wave_direction=row.get("wave_direction"),
             wave_period=row.get("wave_period"),
+            wave_peak_period=row.get("wave_peak_period"),
             swell_wave_height=row.get("swell_wave_height"),
             swell_wave_direction=row.get("swell_wave_direction"),
             swell_wave_period=row.get("swell_wave_period"),
@@ -124,10 +144,9 @@ async def ingest_forecasts_for_beach(
     }
 
 
-def _merge(wave_rows: list[dict], wind_rows: list[dict]) -> list[dict]:
+def _merge(*row_groups: list[dict]) -> list[dict]:
     by_time: dict[datetime, dict] = {}
-    for r in wave_rows:
-        by_time.setdefault(r["valid_at"], {}).update(r)
-    for r in wind_rows:
-        by_time.setdefault(r["valid_at"], {}).update(r)
+    for rows in row_groups:
+        for r in rows:
+            by_time.setdefault(r["valid_at"], {}).update(r)
     return [{"valid_at": t, **v} for t, v in sorted(by_time.items())]

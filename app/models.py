@@ -81,7 +81,14 @@ class Forecast(Base):
     # --- wave (marine-api.open-meteo.com/v1/marine) ---
     wave_height: Mapped[float | None] = mapped_column(Float, nullable=True)
     wave_direction: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # MEAN period (Tm) -- Open-Meteo best_match's `wave_period`. Note this is NOT the same
+    # quantity as Measurement.wave_period below, which is the buoy's real Tp; the two share
+    # a name because the upstreams do, and merging or comparing them would be wrong.
     wave_period: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Real peak period (Tp), from a second model -- see app/clients/open_meteo_marine.py
+    # PEAK_PERIOD_MODEL. Nullable: it comes from a separate request that is allowed to fail
+    # independently, and quality scoring falls back to wave_period when it is absent.
+    wave_peak_period: Mapped[float | None] = mapped_column(Float, nullable=True)
     swell_wave_height: Mapped[float | None] = mapped_column(Float, nullable=True)
     swell_wave_direction: Mapped[float | None] = mapped_column(Float, nullable=True)
     swell_wave_period: Mapped[float | None] = mapped_column(Float, nullable=True)
