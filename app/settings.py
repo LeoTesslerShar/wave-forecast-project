@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     http_max_retries: int = Field(default=3)
 
     forecast_hours_ahead: int = Field(
-        default=72, description="How many hours ahead to fetch per beach per run."
+        default=168, description="How many hours ahead to fetch per beach per run."
     )
     backfill_max_days: int = Field(
         default=3, description="Cap on how far back a single backfill run will reach."

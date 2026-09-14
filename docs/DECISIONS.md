@@ -363,3 +363,57 @@ original, overstated "LOW CONFIDENCE... review against a map." The caveat is rea
 method that only sees vertices cannot see curvature between them) but it is not evidence
 the value is wrong, and should not have been presented as though it might be without
 checking first.
+
+## 2026-09-14 -- Obstruction check was the hidden cost of every beach's quality endpoint
+
+`GET /beaches/{id}/quality?hours=96` measured 2.6s per beach; the ranked-list view (all 8
+beaches, fetched in parallel from the browser) took 10.4s end to end -- the "takes a long
+time to load" the frontend was showing. Profiled with cProfile
+(`docker compose exec api python -c "..."`), root cause was entirely in
+`app/exposure/obstruction.py`, in two compounding layers:
+
+1. **Redundant re-projection.** `_distance_to_nearest_structure` re-projected all ~226 OSM
+   structure lines from raw lat/lon to local XY on every call, and it was called once per
+   ray-cast sample (~2,160 samples for a 96-hour request) -- 5.5 million redundant
+   `to_xy()` calls, the dominant cost by far. Fixed with `_projected_structures(ref_lat)`,
+   `lru_cache`d.
+   **First attempt at this cache rounded `ref_lat` to 0.1 degrees to raise the hit rate
+   across nearby beaches -- caught by the test suite as a real correctness bug**: it
+   silently flipped Herzliya's obstruction result at a 300 degree swell (clear -> blocked)
+   by shifting the coordinate frame just enough to cross the 150m lateral threshold on a
+   near-boundary case (`test_bat_yam_vs_herzliya_known_truth` and
+   `test_ranked_conditions_orders_herzliya_above_bat_yam` failed). Fixed by keying the
+   cache on the **exact** `ref_lat` float instead -- every sample for one beach already
+   shares that beach's own literal latitude, so the cache still collapses to one
+   computation per beach per process with zero behavioural difference from the uncached
+   version. Regression test:
+   `tests/test_exposure_obstruction.py::test_projected_structures_cache_gives_identical_results_to_a_fresh_projection`.
+   This is the general lesson to carry forward: a cache key that approximates the real
+   input can silently move a result across a decision threshold. Round/bucket a cache key
+   only when the function's output cannot change within the rounding tolerance -- never
+   assume it can't without checking a near-boundary case directly.
+
+2. **Algorithmic complexity, unaffected by the projection fix.** Even with projection
+   cached, every ray-cast sample still did a linear scan over every point of every one of
+   ~226 structure lines to find the nearest one -- an O(all structures) search for a query
+   that only ever needs "is anything within 150m of this one point." Re-profiling after
+   fix (1) confirmed `to_xy` had dropped out of the hot path entirely, but
+   `_distance_to_nearest_structure` was still the dominant cost (2.785s of 3.855s tottime
+   for one 80-row request). Fixed with a uniform spatial grid (`_structure_grid()`): each
+   structure segment is bucketed into every 200m grid cell its bounding box overlaps
+   (`GRID_CELL_M = 200.0`, chosen as the smallest round number >= the 150m lateral
+   threshold); a query (`_within_threshold_of_structure`) only inspects the sample's own
+   cell and its 8 neighbours, not all ~226 lines. `GRID_CELL_M >= OBSTRUCTION_LATERAL_THRESHOLD_M`
+   is the correctness invariant -- any segment within the threshold of a point must have at
+   least one point within the threshold, which places it in the same cell as the query
+   point or an immediately adjacent one, so nothing reachable is ever skipped. Checked
+   directly (not just via the known-truth cases) in
+   `tests/test_exposure_obstruction.py::test_grid_threshold_check_agrees_with_exhaustive_scan`,
+   which compares the grid result against the original exhaustive scan across a spread of
+   real sample points along each beach's swell ray.
+
+**Measured result** (Docker container rebuilt, `docker compose up -d --build api`):
+single-beach `/quality?hours=96` went from 2.6s to ~0.08s; the realistic 8-beaches-in-
+parallel ranked-list load went from 10.442s to ~0.36s, cold or warm (the grid fix removed
+enough cost that the caching layer barely matters any more). Full suite: 89/89 passing
+after both fixes, including the new grid-vs-exhaustive correctness test.
