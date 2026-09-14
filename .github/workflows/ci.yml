@@ -52,3 +52,20 @@ jobs:
 
       - name: Run tests (no live network -- every upstream call is mocked from committed fixtures)
         run: pytest -v
+
+  web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm install
+
+      - name: Build frontend (catches syntax/import errors -- no browser tests here)
+        working-directory: web
+        run: npm run build

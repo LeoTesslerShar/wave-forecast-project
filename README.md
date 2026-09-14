@@ -32,7 +32,7 @@ wave-height accuracy.** Full story in [`PROMPT.md`](PROMPT.md) section 1.
 This split is permanent, not a placeholder for "will validate later." No ground truth
 exists at any Israeli beach and none is coming -- see Known limitations.
 
-## Status: Phase 4 (alerting) complete
+## Status: complete -- all 5 phases built
 
 | Phase | Status |
 |---|---|
@@ -41,8 +41,10 @@ exists at any Israeli beach and none is coming -- see Known limitations.
 | 1 -- ingestion | done: forecast (wave + wind) + Hadera buoy, scheduled, idempotent, gap-backfilled |
 | 2 -- beach exposure | done: shoreline bearing from OSM coastline, directional + obstruction scoring, beach ranking |
 | 3 -- surf quality scoring | done: wind, period, chop ratio combined into an hour-by-hour verdict |
-| **4 -- alerting** | **this build**: subscriptions, deduplication, calibrated threshold, Web Push |
-| 5 -- frontend | not built -- the only phase left |
+| 4 -- alerting | done: subscriptions, deduplication, calibrated threshold, Web Push |
+| **5 -- frontend** | **this build**: ranked beach list, single-beach breakdown, subscription form |
+
+This closes the build. What follows is the end-to-end picture of the finished system.
 
 ## What exists right now
 
@@ -98,14 +100,34 @@ dawn -- once the land breeze turns offshore -- is when it cleans up.
   from silence that looks like the system stopped working (`docs/BIAS_ANALYSIS.md`: only
   26% of hours reach 1m annually; September, 1.3%).
 
-- 86 tests, no live network (every upstream mocked from a committed fixture; the geometry
-  and alerting-concurrency tests run against real committed data / a real Postgres, not
-  mocks).
+- 86 backend tests, no live network (every upstream mocked from a committed fixture; the
+  geometry and alerting-concurrency tests run against real committed data / a real
+  Postgres, not mocks).
 
-## What is NOT built yet
+**Phase 5 -- frontend** (`web/`), React + Vite, served as its own nginx container so the
+existing API routes never had to move. Presentation only -- no scoring, matching or
+business logic lives here; every number shown is exactly what an existing Phase 1-4
+endpoint already returned (`docs/DECISIONS.md`).
 
-A frontend. Every API response already carries `method`/`confidence` fields so no future
-caller ever sees an unlabelled number.
+- **Beach list, ranked for a chosen day** -- the primary view. For each beach, fetches
+  `GET /beaches/{id}/quality`, takes that beach's best hour on the selected local day, and
+  sorts beaches by the already-computed `quality_score` (a display sort, not new scoring).
+  Shows the verdict, the size range, wind, period and chop per beach.
+- **Single-beach breakdown** -- every field from Phase 3's quality response for one beach,
+  one hour: size (estimate + range + confidence), offshore raw value, exposure basis,
+  period, wind (speed/direction/relation-to-shore/gusts), chop ratio, the verdict and its
+  reasoning, with a confidence badge next to every heuristic value.
+- **Subscription form** -- beach, min/max height, time window, operating point (with the
+  strict/balanced/generous trade-off explained), posts to the real `POST /subscriptions`;
+  lists and can deactivate the user's existing subscriptions.
+- **One honesty-marker convention everywhere** (`web/src/components/Badges.jsx`): any
+  value whose `confidence` string contains `"unvalidated"` gets an amber "estimate" badge;
+  everything else gets a green "measured" badge. A range is always shown as a range, never
+  a bare decimal.
+- Verified against the real running API, not just code review:
+  `web/scripts/verify_ranking.mjs` (imports the actual `dateUtils.js` the component uses)
+  and `web/scripts/verify_subscription.mjs` reproduce the ranked list and the
+  create-and-confirm subscription flow against live data.
 
 ## Running it
 
@@ -114,8 +136,12 @@ cp .env.example .env      # already done in this repo for local dev; real deploy
 docker compose up -d
 ```
 
-First boot runs Alembic migrations, seeds beaches/buoys from `data/beaches.yml`, then starts
-serving. Ingestion and alert evaluation fire on the schedule; nothing blocks startup.
+First boot runs Alembic migrations, seeds beaches/buoys from `data/beaches.yml`, builds and
+serves the frontend, and starts the API. Ingestion and alert evaluation fire on the
+schedule; nothing blocks startup.
+
+- Frontend: **http://localhost:3000**
+- API: **http://localhost:8000**
 
 ```
 curl http://localhost:8000/health
@@ -136,11 +162,18 @@ Web Push needs real VAPID keys (`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` in `.env`
 actually deliver; without them, alerts are still computed and logged, just not delivered
 (graceful degradation, hard rule 7).
 
-Tests (needs Postgres + Redis reachable -- `docker compose up -d postgres redis` then run
-outside the container, or `docker compose run --rm api pytest`):
+Backend tests (needs Postgres + Redis reachable -- `docker compose up -d postgres redis`
+then run outside the container, or `docker compose run --rm api pytest`):
 
 ```
 docker compose run --rm api pytest -v
+```
+
+Frontend build check (no browser test suite -- `npm run build` catches syntax/import
+errors; behaviour is verified against the live API by the scripts in `web/scripts/`):
+
+```
+cd web && npm install && npm run build
 ```
 
 ## Known limitations
@@ -164,3 +197,10 @@ docker compose run --rm api pytest -v
   accrues from when ingestion started running.
 - Push delivery failures other than 404/410 are logged, not queued for retry -- a real
   retry-with-backoff queue is future work.
+- The frontend has no browser-based test suite and was not visually screenshotted (no
+  browser-automation tool was available in this session). Verified instead by: a clean
+  production build with no errors, the served container returning real built HTML/JS
+  (not a stub), and two scripts (`web/scripts/verify_ranking.mjs`,
+  `verify_subscription.mjs`) that import the actual frontend code and exercise it against
+  the live API. Actual visual rendering and interactive form behaviour (clicks, dropdowns)
+  are unverified beyond code review.

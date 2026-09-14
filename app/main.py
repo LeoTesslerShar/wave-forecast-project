@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import alerting, beaches, buoys, health
 from app.db import SessionLocal
@@ -24,6 +25,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Surf Alert System -- ingestion API", lifespan=lifespan)
+
+# Phase 5's frontend is served as its own container on a different port -- CORS is
+# ordinary cross-origin wiring for that, not new business logic (PROMPT.md section 3's
+# "do not invent new backend logic" is about scoring/matching rules, not this).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(health.router)
 app.include_router(beaches.router)

@@ -246,3 +246,55 @@ change regardless of whether delivery to any specific device succeeded, so a tra
 failure does not cause the subscription to be silently re-evaluated as "not yet alerted"
 and spam-retried on the next scheduled cycle. A real retry-with-backoff queue for
 transient push failures is future work, out of scope for this phase.
+
+
+## 2026-09-14 -- Phase 5
+
+### Served as its own container, not mounted into the API
+
+The frontend is a separate `web` service (nginx serving a static Vite build) on its own
+port, rather than FastAPI serving static files at `/`. The alternative would have meant
+prefixing every existing API route under `/api/*` -- a breaking change to paths already
+documented, tested (86 backend tests), and used throughout Phases 1-4. Two services plus
+CORS (`app/main.py`) is a few lines; renaming every route is not "thin." CORS itself is
+ordinary cross-origin wiring for a separately-served frontend, not the "new backend logic"
+prompts/phase-5-ui.md section 3 warns against -- that clause is about scoring/matching
+rules, not deployment plumbing.
+
+### Ranking is a client-side SORT of an already-computed field, not client-side scoring
+
+The phase prompt says the ranked beach list should show "quality verdict... sorted
+best-to-worst," but no existing endpoint ranks beaches by `quality_score` specifically --
+`GET /conditions` (Phase 2) ranks by exposure height only. Rather than add a new ranking
+endpoint in this "presentation only" phase, `RankedBeachList.jsx` fetches each beach's
+already-computed quality (`GET /beaches/{id}/quality`, Phase 3) and sorts the results by
+the `quality_score` field the backend already produced. This is display logic (the same
+category as sorting a table by a column), not new business logic -- nothing about wind,
+chop, exposure or the verdict itself is recomputed in the browser. Verified end-to-end
+against the live API with `web/scripts/verify_ranking.mjs`, which imports the real
+`dateUtils.js` the component uses, not a reimplementation.
+
+### "Best hour of the day" picked by max quality_score, for the same reason
+
+For "ranked for a chosen day," each beach's card represents its single best hour that
+local calendar day (Asia/Jerusalem) -- `dateUtils.js::bestHourForDate` takes the max of an
+already-computed field, mirroring `app/alerting/matching.py::best_cluster`'s own choice in
+Phase 4 (highest score, not first or longest). Consistent with how the backend already
+treats "the best opportunity in a window," not a new heuristic.
+
+### One consistent honesty-marker convention across all three views
+
+`components/Badges.jsx` is the ONLY place that decides whether a confidence string counts
+as "estimate" or "measured" (`confidence.includes("unvalidated")`). Every view imports it
+rather than reimplementing the check -- found and fixed one accidental duplicate
+(`ConfidenceBadgeInline`) in `RankedBeachList.jsx` during review before it could drift out
+of sync with the real component.
+
+### Accepted: Vite's esbuild dev-server advisory, not upgraded to Vite 6/7
+
+`npm audit` flags a moderate/high advisory in esbuild (any website can send requests to a
+running `vite dev` server and read the response) that persists across the entire Vite
+5.x/6.x line -- fixed only in a breaking major version. This project's `vite dev` is a
+local development convenience, never the production path (nginx serves a static build in
+the shipped container), and a major-version jump was judged not worth it for a "thin"
+phase. Bumped to the latest 5.4.x patch first to confirm it wasn't already fixed there.
