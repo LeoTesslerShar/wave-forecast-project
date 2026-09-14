@@ -160,7 +160,16 @@ curl "http://localhost:8000/subscriptions/1/status"
 
 Web Push needs real VAPID keys (`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` in `.env`) to
 actually deliver; without them, alerts are still computed and logged, just not delivered
-(graceful degradation, hard rule 7).
+(graceful degradation, hard rule 7). Generate a real pair with:
+
+```
+py -3.13 scripts/alerting/generate_vapid_keys.py
+```
+
+It round-trips the key through pywebpush's own loader before printing anything, and the
+generated format has been confirmed to reach a real push service (a live request against
+`fcm.googleapis.com` with a fake subscription returned a genuine `410 Gone`, not a
+key-format error -- see `docs/DECISIONS.md`).
 
 Backend tests (needs Postgres + Redis reachable -- `docker compose up -d postgres redis`
 then run outside the container, or `docker compose run --rm api pytest`):

@@ -298,3 +298,27 @@ running `vite dev` server and read the response) that persists across the entire
 local development convenience, never the production path (nginx serves a static build in
 the shipped container), and a major-version jump was judged not worth it for a "thin"
 phase. Bumped to the latest 5.4.x patch first to confirm it wasn't already fixed there.
+
+
+## 2026-09-14 -- Post-Phase-5 follow-up
+
+### VAPID key generation script, verified against a real push service
+
+Phase 4 shipped `app/alerting/push.py` and `.env.example`'s key names, but left "generate
+real VAPID keys" as a manual step with no tooling -- a real gap for anyone actually trying
+to run this. Added `scripts/alerting/generate_vapid_keys.py`, which:
+
+- generates a real P-256 keypair (`cryptography`, already a transitive dependency of
+  `pywebpush` via `py-vapid` -- no new pin needed);
+- round-trips the private key through `pywebpush`'s own `Vapid02.from_string` before
+  printing anything, so a key this script prints is guaranteed parseable by
+  `app/alerting/push.py`'s actual loading path (`webpush(vapid_private_key=<string>)`,
+  which calls the same loader);
+- was further confirmed by sending one real `webpush()` call, with a generated key, to a
+  fake subscription endpoint at `https://fcm.googleapis.com/fcm/send/...` -- it returned a
+  genuine `410 Gone` from Google's real infrastructure, not a key-format rejection,
+  proving the generated key format is actually accepted by a live push service, not just
+  locally self-consistent.
+
+Never writes keys to a file or prints them anywhere but stdout, for the user to paste into
+their own `.env` -- consistent with hard rule 4.
