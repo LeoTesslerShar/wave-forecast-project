@@ -53,18 +53,30 @@ class ExposureComponents(BaseModel):
 class ExposureConfidence(BaseModel):
     offshore_raw: str = "measured_accurate"  # docs/BIAS_ANALYSIS.md -- MAE 0.091m in the surfable band
     exposure: str = "unvalidated_heuristic"  # hard rule 1 -- no ground truth at any beach
+    # Contains "unvalidated" so the frontend's isEstimate() check (web/src/components/
+    # Badges.jsx) marks it the same as every other heuristic, not "measured" -- it is a
+    # further, unmeasured conversion layered on top of exposure, not a new measurement.
+    face_height: str = "unvalidated_conversion_from_significant_height"
 
 
 class ExposureEstimateOut(BaseModel):
     """prompts/phase-2-exposure.md section 3. Every field here is required on any response
     that applies exposure to a forecast -- see the honest-labelling requirement. The range
     is never narrower than the measured offshore spread (docs/BIAS_ANALYSIS.md, ~+/-0.19-
-    0.25m 90% interval) -- exposure adds uncertainty, it never subtracts it."""
+    0.25m 90% interval) -- exposure adds uncertainty, it never subtracts it.
+
+    wave_height_estimate/_range are significant wave height (Hs) -- what the offshore model
+    outputs and what docs/BIAS_ANALYSIS.md's accuracy numbers and app/quality/size.py's
+    band boundaries are calibrated against; never change what these two mean.
+    face_height_estimate/_range are a separate, purely derived "what a surfer would call
+    it" conversion (docs/DECISIONS.md) -- for display only, not used anywhere in scoring."""
 
     beach_id: str
     valid_at: datetime
     wave_height_estimate: float | None
     wave_height_range: tuple[float, float] | None
+    face_height_estimate: float | None
+    face_height_range: tuple[float, float] | None
     method: str
     components: ExposureComponents
     confidence: ExposureConfidence

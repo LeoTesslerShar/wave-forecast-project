@@ -27,6 +27,16 @@ export function localHourLabel(isoTimestamp) {
   }).format(new Date(isoTimestamp));
 }
 
+/** Local (Asia/Jerusalem) hour of day, 0-23 -- used to thin an hourly series down to a
+ * fixed interval (e.g. every 3rd hour) without drifting across a UTC offset change. */
+export function localHourOfDay(isoTimestamp) {
+  return Number(
+    new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hourCycle: "h23" }).format(
+      new Date(isoTimestamp),
+    ),
+  );
+}
+
 /** The best (highest quality_score) hour, among `hours`, that falls on `dateString`
  * (local). Sorting/selecting an already-server-computed field -- not scoring. */
 export function bestHourForDate(hours, dateString) {

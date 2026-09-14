@@ -417,3 +417,46 @@ single-beach `/quality?hours=96` went from 2.6s to ~0.08s; the realistic 8-beach
 parallel ranked-list load went from 10.442s to ~0.36s, cold or warm (the grid fix removed
 enough cost that the caching layer barely matters any more). Full suite: 89/89 passing
 after both fixes, including the new grid-vs-exhaustive correctness test.
+
+## 2026-09-14 -- Face height added as a labelled derived display value
+
+User comparison against another surf app on the same day showed a large gap: our estimate
+0.5m, the other app 1.3m, for what looked like the same beach and hour. Investigated by
+pulling our stored offshore forecast, re-querying Open-Meteo marine live to rule out a
+staleness bug (confirmed identical, not stale), and comparing across all 8 beaches. Root
+cause was not a data bug: Open-Meteo's `wave_height` -- everything this project's exposure
+and quality layers are built on -- is **significant wave height (Hs)**, the oceanographic
+average of the highest third of waves, the same convention docs/BIAS_ANALYSIS.md validated
+against the DeepLev buoy. Surf-facing apps commonly show **face height** instead -- closer
+to the biggest wave a surfer would actually describe from a session, not the statistical
+average -- which runs well above Hs. That gap (not a model error) plausibly explains most
+of the 0.5m vs 1.3m difference; our own beach-specific exposure/obstruction adjustment
+accounts for the rest and is unrelated to this.
+
+Added `face_height_estimate`/`face_height_range` to `ExposureEstimateOut`
+(`app/exposure/apply.py`, `app/schemas.py`) as a **separate, clearly-labelled display
+field** -- `wave_height_estimate`/`wave_height_range` (Hs) are untouched and remain what
+`app/quality/size.py`'s band boundaries and every accuracy claim in
+docs/BIAS_ANALYSIS.md are calibrated against; face height is never used in scoring,
+banding, or alerting, only shown to the user.
+
+**The multiplier itself (`FACE_HEIGHT_MULTIPLIER = 1.8`) is a judgement call, not a fitted
+value** -- flagged the same way as `OBSTRUCTION_LATERAL_THRESHOLD_M`. This project's own
+Hadera buoy fixture happens to report both Hs and Hmax for the same moment (0.42m / 0.53m,
+docs/DATA_SOURCES.md -- ratio 1.27), but that is one sample from one buoy at one sea
+state, nowhere near enough to fit a ratio from; querying the live measurements table found
+exactly one stored row, same conclusion. Used the standard Rayleigh-distributed-sea-state
+approximation instead: for N independent waves the expected largest is
+`Hs * sqrt(0.5 * ln(N))`; N=1000 (roughly a few hours at an 8-10s period -- "the biggest
+wave of the session") gives ~1.86, rounded to the more commonly cited surf-forecasting
+rule of thumb of 1.8. Labelled `confidence.face_height =
+"unvalidated_conversion_from_significant_height"` (contains "unvalidated" so the frontend's
+existing estimate/measured badge convention, web/src/components/Badges.jsx, picks it up
+automatically) -- it is a derived conversion, not a new measurement, and should never be
+mistaken for one.
+
+Regression tests: `tests/test_exposure_api.py::test_beach_exposure_response_has_full_components_and_confidence`
+now also asserts face height is an exact, fixed multiple of the already-computed Hs
+estimate (never an independent computation that could drift out of step), and
+`test_face_height_is_a_labelled_multiple_of_significant_height_not_a_new_measurement`
+pins the multiplier's sign and the confidence label directly.

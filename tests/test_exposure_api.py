@@ -48,6 +48,33 @@ async def test_beach_exposure_response_has_full_components_and_confidence(db_ses
     assert row.wave_height_range[1] - row.wave_height_range[0] >= 0.49  # >= 2x the 0.25m floor
     assert "bearing" in row.exposure_basis
 
+    # Face height (docs/DECISIONS.md) must be an exact, fixed multiple of the significant-
+    # height estimate this function already computed -- never an independent computation
+    # that could silently drift out of step with it.
+    from app.exposure.apply import FACE_HEIGHT_MULTIPLIER
+
+    assert row.face_height_estimate == round(row.wave_height_estimate * FACE_HEIGHT_MULTIPLIER, 2)
+    assert row.face_height_range == (
+        round(row.wave_height_range[0] * FACE_HEIGHT_MULTIPLIER, 2),
+        round(row.wave_height_range[1] * FACE_HEIGHT_MULTIPLIER, 2),
+    )
+    assert "unvalidated" in row.confidence.face_height
+
+
+async def test_face_height_is_a_labelled_multiple_of_significant_height_not_a_new_measurement():
+    """Regression test for the face-height display fields (app/exposure/apply.py
+    FACE_HEIGHT_MULTIPLIER, docs/DECISIONS.md): it must be a fixed, documented multiple of
+    the already-computed significant-height estimate -- never an independent computation
+    that could silently drift out of step with it -- and its confidence must still read as
+    an estimate (contain "unvalidated"), same as every other heuristic field, since it is a
+    further unmeasured conversion, not a new measurement."""
+    from app.exposure.apply import FACE_HEIGHT_MULTIPLIER
+
+    assert FACE_HEIGHT_MULTIPLIER > 1.0  # face height must be larger, not smaller, than Hs
+
+    conf = ExposureConfidence()
+    assert "unvalidated" in conf.face_height
+
 
 async def test_ranked_conditions_orders_herzliya_above_bat_yam(db_session):
     bat_yam, herzliya, valid_at = await _seed(db_session)

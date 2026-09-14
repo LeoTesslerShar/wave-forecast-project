@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
-import { localDateString, localHourLabel, todayLocalDateString } from "../dateUtils.js";
+import { localDateString, localHourLabel, localHourOfDay, todayLocalDateString } from "../dateUtils.js";
+
+// Shown at a 3-hour cadence (00, 03, 06, ... local) rather than every hour -- enough to see
+// how a window develops without a 24-row dropdown for one day.
+const HOUR_INTERVAL = 3;
 import { ConfidenceBadge, RangedValue, VerdictBadge } from "../components/Badges.jsx";
 
 /** Every component from Phase 3's API response, for one beach, one hour -- "readable in
@@ -31,13 +35,17 @@ export default function SingleBeachBreakdown() {
       .getBeachQuality(beachId, 168)
       .then((rows) => {
         setHourly(rows);
-        const onDate = rows.filter((r) => localDateString(r.valid_at) === date);
+        const onDate = rows.filter(
+          (r) => localDateString(r.valid_at) === date && localHourOfDay(r.valid_at) % HOUR_INTERVAL === 0,
+        );
         setSelectedIso(onDate.length > 0 ? onDate[0].valid_at : rows[0]?.valid_at || "");
       })
       .catch((e) => setError(e.message));
   }, [beachId, date]);
 
-  const hoursForDate = (hourly || []).filter((r) => localDateString(r.valid_at) === date);
+  const hoursForDate = (hourly || []).filter(
+    (r) => localDateString(r.valid_at) === date && localHourOfDay(r.valid_at) % HOUR_INTERVAL === 0,
+  );
   const selected = (hourly || []).find((r) => r.valid_at === selectedIso);
 
   return (
@@ -90,12 +98,12 @@ export default function SingleBeachBreakdown() {
           <table className="breakdown-table">
             <tbody>
               <tr>
-                <th>Size</th>
+                <th>Size (face height)</th>
                 <td>
                   <RangedValue
-                    estimate={selected.size.wave_height_estimate}
-                    range={selected.size.wave_height_range}
-                    confidence={selected.size.confidence.exposure}
+                    estimate={selected.size.face_height_estimate}
+                    range={selected.size.face_height_range}
+                    confidence={selected.size.confidence.face_height}
                   />
                 </td>
               </tr>

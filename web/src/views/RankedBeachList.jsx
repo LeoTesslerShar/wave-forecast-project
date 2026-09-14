@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { bestHourForDate, localHourLabel, todayLocalDateString } from "../dateUtils.js";
-import { ConfidenceBadge, RangedValue, VerdictBadge } from "../components/Badges.jsx";
+import { ConfidenceBadge, SizeValue, VerdictBadge } from "../components/Badges.jsx";
 
 /** The primary view -- "which beach, today." Ranking is a client-side sort of the
  * already-computed quality_score (Phase 3); nothing here recomputes size, wind, chop or
@@ -75,11 +75,7 @@ export default function RankedBeachList() {
               <div className="beach-card-body">
                 <div>
                   <span className="label">Size</span>
-                  <RangedValue
-                    estimate={best.size.wave_height_estimate}
-                    range={best.size.wave_height_range}
-                    confidence={best.size.confidence.exposure}
-                  />
+                  <SizeValue size={best.size} />
                 </div>
                 <div>
                   <span className="label">Wind</span>
