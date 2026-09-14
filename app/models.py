@@ -8,10 +8,11 @@ Key decisions recorded in docs/DECISIONS.md:
   - measurements keeps Hs (wave_height), Tp (wave_period) and Hmax (wave_max) as separate
     columns -- never merged, per the Hs/Hmax distinction in docs/DATA_SOURCES.md.
 """
-from datetime import datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -19,8 +20,10 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Time,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -141,3 +144,77 @@ class IngestionRun(Base):
     window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Subscription(Base):
+    """A user's surf-alert criteria -- prompts/phase-4-alerting.md section 1. `user_id` is
+    a simple opaque identifier (planning doc section 8 -- no full auth in this project).
+
+    `time_window_start`/`time_window_end` are LOCAL wall-clock times (Asia/Jerusalem);
+    `end <= start` means the window crosses midnight -- see app/alerting/timewindow.py.
+    """
+
+    __tablename__ = "subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    beach_id: Mapped[str] = mapped_column(ForeignKey("beaches.id"), nullable=False)
+
+    min_height: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_height: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Preferred swell direction range in degrees, may wrap across 0/360 (e.g. min=300,
+    # max=30 means "300 through 360 through 30"). Both null means "no preference".
+    swell_dir_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    swell_dir_max: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    time_window_start: Mapped[time] = mapped_column(Time, nullable=False)
+    time_window_end: Mapped[time] = mapped_column(Time, nullable=False)
+
+    # "strict" | "balanced" | "generous" -- app/alerting/calibration.py
+    operating_point: Mapped[str] = mapped_column(String(16), nullable=False, default="balanced")
+
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    beach: Mapped["Beach"] = relationship()
+
+
+class PushSubscription(Base):
+    """A registered Web Push endpoint (one per browser/device) -- prompts/phase-4-alerting.md
+    section 5. Not tied to a single Subscription -- one user's devices receive alerts for
+    all of that user's active Subscriptions."""
+
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    endpoint: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    p256dh: Mapped[str] = mapped_column(Text, nullable=False)
+    auth: Mapped[str] = mapped_column(Text, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AlertSent(Base):
+    """Append-only log of every alert decision actually acted on (send or deliberate
+    silence is NOT logged here -- only sends: initial alerts, material-change updates, and
+    cancellations). `target_date` + `subscription_id` identifies "the same window" across
+    repeated evaluation runs, per prompts/phase-4-alerting.md section 3 -- the latest row
+    for a (subscription_id, target_date) pair is the current state to compare the next
+    evaluation against. `conditions_snapshot` stores what was actually said, not a
+    boolean, so material-change comparison has real numbers to work from.
+    """
+
+    __tablename__ = "alerts_sent"
+    __table_args__ = (
+        Index("ix_alerts_sent_latest", "subscription_id", "target_date", "sent_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    subscription_id: Mapped[int] = mapped_column(ForeignKey("subscriptions.id"), nullable=False)
+    target_date: Mapped[date] = mapped_column(Date, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # 'alert' | 'update' | 'cancellation'
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    conditions_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

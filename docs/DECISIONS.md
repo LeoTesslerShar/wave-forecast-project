@@ -179,3 +179,70 @@ There is no daily rollup anywhere in the quality pipeline. Each hour's Forecast 
 scored independently against that hour's own wind, so a stormy afternoon's big number
 cannot leak into the following dawn's verdict -- this is the entire point of the phase
 (section 2, "the local pattern"), enforced structurally rather than by discipline.
+
+
+## 2026-09-14 -- Phase 4
+
+### The GO/DON'T-GO table was in chat but not in the repo -- fixed before building on it
+
+Discovered while starting the calibrated-threshold work: the GO/DON'T-GO table quoted in
+the Phase 0.5 conversation (missed-session and wasted-trip percentages at five height
+thresholds) was never actually committed to `docs/BIAS_ANALYSIS.md` -- only shown in chat.
+Building the calibration module on an uncommitted number would have violated hard rule 5
+(every claim backed by evidence in the repo). Re-ran
+`scripts/deeplev/decision_quality.py`, confirmed the numbers reproduce exactly, and added
+the table to `docs/BIAS_ANALYSIS.md` itself before writing `app/alerting/calibration.py`
+against it.
+
+### Calibrated threshold: real interpolation, not one invented global percentage
+
+The phase prompt's own example ("generous: catches roughly 13% more real sessions") is
+illustrative language, not a number to hardcode. `app/alerting/calibration.py` instead
+interpolates the actual 5-point measured table for whatever threshold a given
+subscription sets, so a 1.5m bar and a 0.8m bar get their own honestly-computed figures
+rather than one number applied everywhere. Interpolation is linear and clamped at the
+table's own ends (0.6-1.5m) -- no extrapolation beyond what was actually measured.
+
+Operating-point offsets themselves (`strict`=0, `balanced`=0.15m, `generous`=0.25m) are
+still a judgement call: roughly half and the full width of the offshore forecast's own
+measured 90% spread (docs/BIAS_ANALYSIS.md). What is NOT invented is the resulting
+caught/wasted percentages shown to the user -- those come from the table.
+
+### Subscription identity: (subscription_id, target_date), not exact window boundaries
+
+A subscription's daily time window (e.g. 06:00-09:00 local) is the anchor for "the same
+window" across repeated evaluations, not the exact qualifying-hour boundaries, which can
+legitimately shift run to run. This is also *why* window-shift is one of the material-
+change triggers (section 3, rule 2) rather than an identity check -- if exact boundaries
+were the identity key, a window narrowing from 06:00-09:00 to 07:00-09:00 would look like
+a brand new window and re-alert as "initial", rather than being recognised as the same
+window with different content.
+
+### Idempotency: a real row lock, not a dedup table or a Redis lock
+
+`evaluate_subscription_for_date` takes `SELECT ... FOR UPDATE` on the Subscription row for
+the whole decide-and-maybe-send sequence. Two concurrent evaluations of the same
+subscription serialise on Postgres itself; the loser re-reads the freshly committed
+AlertSent row and finds nothing material to add. Verified against a real Postgres with two
+genuinely concurrent connections (tests/test_alerting_idempotency.py), not simulated.
+Chosen over a Redis-based lock or a separate `evaluation_locks` table because the
+serialisation only ever needs to matter within the scope of one subscription's own rows,
+which a row lock on that exact row provides for free.
+
+### Best-cluster selection: highest average quality score, not longest
+
+When a subscription's window contains more than one separate contiguous qualifying stretch
+(a gap in the middle), `app/alerting/matching.py::best_cluster` picks the one with the
+higher average `quality_score`, breaking ties by hour count. A short, clean 2-hour dawn
+window beats a longer but choppier 4-hour stretch -- judged worth alerting on the better
+session, not the longer one. Judgement call, no ground truth to tune it against.
+
+### Push delivery failures are logged, not queued for retry
+
+`send_push` returns `sent | expired | failed`; on `expired` (404/410) the subscription is
+deactivated (acceptance check 4). On `failed` (any other error), the failure is logged and
+the AlertSent row still gets written -- the DECISION to alert is recorded once per material
+change regardless of whether delivery to any specific device succeeded, so a transient push
+failure does not cause the subscription to be silently re-evaluated as "not yet alerted"
+and spam-retried on the next scheduled cycle. A real retry-with-backoff queue for
+transient push failures is future work, out of scope for this phase.

@@ -41,6 +41,17 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO")
 
+    # Web Push (prompts/phase-4-alerting.md section 5). Never committed (hard rule 4) --
+    # blank by default; alerting degrades to "computed but not delivered" without them,
+    # per hard rule 7, rather than crashing.
+    vapid_public_key: str = Field(default="")
+    vapid_private_key: str = Field(default="")
+    vapid_claims_email: str = Field(default="admin@example.com")
+
+    alert_evaluation_days_ahead: int = Field(
+        default=3, description="How many local calendar days ahead to evaluate subscriptions for."
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

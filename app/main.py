@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import beaches, buoys, health
+from app.api import alerting, beaches, buoys, health
 from app.db import SessionLocal
 from app.logging_utils import configure_logging, log_event
 from app.scheduler import start_scheduler, stop_scheduler
@@ -28,3 +28,4 @@ app = FastAPI(title="Surf Alert System -- ingestion API", lifespan=lifespan)
 app.include_router(health.router)
 app.include_router(beaches.router)
 app.include_router(buoys.router)
+app.include_router(alerting.router)

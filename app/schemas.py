@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, time
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class BeachOut(BaseModel):
@@ -130,3 +130,90 @@ class HealthOut(BaseModel):
     database: bool
     redis: bool
     sources: list[HealthSource]
+
+
+class SubscriptionCreate(BaseModel):
+    """prompts/phase-4-alerting.md section 1. Validation here, not just at the DB layer --
+    sane height ranges, direction ranges that wrap correctly, time windows that may cross
+    midnight (validated for parseability; wrap/crossing itself is legal, not an error)."""
+
+    user_id: str
+    beach_id: str
+    min_height: float | None = None
+    max_height: float | None = None
+    swell_dir_min: float | None = None
+    swell_dir_max: float | None = None
+    time_window_start: time
+    time_window_end: time
+    operating_point: str = "balanced"
+
+    @field_validator("max_height")
+    @classmethod
+    def _max_above_min(cls, v, info):
+        min_h = info.data.get("min_height")
+        if v is not None and min_h is not None and v < min_h:
+            raise ValueError("max_height must be >= min_height")
+        return v
+
+    @field_validator("min_height", "max_height")
+    @classmethod
+    def _height_sane(cls, v):
+        if v is not None and not (0 <= v <= 20):
+            raise ValueError("height must be between 0 and 20m")
+        return v
+
+    @field_validator("swell_dir_min", "swell_dir_max")
+    @classmethod
+    def _direction_sane(cls, v):
+        if v is not None and not (0 <= v < 360):
+            raise ValueError("direction must be in [0, 360)")
+        return v
+
+    @field_validator("operating_point")
+    @classmethod
+    def _operating_point_known(cls, v):
+        if v not in ("strict", "balanced", "generous"):
+            raise ValueError("operating_point must be one of strict, balanced, generous")
+        return v
+
+
+class SubscriptionOut(BaseModel):
+    id: int
+    user_id: str
+    beach_id: str
+    min_height: float | None
+    max_height: float | None
+    swell_dir_min: float | None
+    swell_dir_max: float | None
+    time_window_start: time
+    time_window_end: time
+    operating_point: str
+    active: bool
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class PushSubscriptionCreate(BaseModel):
+    user_id: str
+    endpoint: str
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionOut(BaseModel):
+    id: int
+    user_id: str
+    endpoint: str
+    active: bool
+    model_config = {"from_attributes": True}
+
+
+class SubscriptionStatusOut(BaseModel):
+    subscription_id: int
+    active: bool
+    system_healthy: bool
+    last_alert_kind: str | None
+    last_alert_at: datetime | None
+    last_alert_target_date: str | None
+    currently_alerted: bool
+    message: str

@@ -146,6 +146,29 @@ includes the everyday rideable band. The headline −7% conceals both effects. A
 implementation must either accept that trade or apply the correction only outside the
 mid-range, and must justify the choice explicitly.
 
+## GO/DON'T-GO accuracy — the table Phase 4's calibrated threshold is built on
+
+Reframed as a decision instead of centimetres: at a given height bar, how often does the
+model's GO/DON'T-GO call agree with what actually happened? `model says >= T`, `reality
+says >= T`, evaluated on deployment 9 (n=8,212 hours, the healthy deployment).
+
+| Threshold (m) | Real GO hours | Model GO hours | Wasted trips % | Missed sessions % | Agreement % |
+|---|---|---|---|---|---|
+| 0.6 | 4,794 | 5,314 | 13.3 | 3.9 | 89.2 |
+| 0.8 | 3,078 | 3,283 | 12.7 | 6.9 | 92.3 |
+| 1.0 | 2,143 | 2,023 | 8.0 | 13.1 | 94.6 |
+| 1.2 | 1,439 | 1,302 | 8.1 | 16.8 | 95.8 |
+| 1.5 | 919 | 781 | 6.8 | 20.8 | 97.0 |
+
+*Wasted trip* = model says GO, reality was below the bar. *Missed session* = model said
+DON'T-GO, reality actually cleared the bar. Missed sessions climb steadily with the
+threshold (3.9% to 20.8%) — the range-compression finding above, restated as a decision
+cost: the higher the bar, the more real sessions the model fails to call. This table is
+reproduced by `scripts/deeplev/decision_quality.py` and is the source data for the
+calibrated-threshold operating points in `app/alerting/calibration.py`
+(prompts/phase-4-alerting.md section 6) — interpolated for whatever threshold a user
+actually sets, not read off only these five rows.
+
 ## Verdict
 
 **The project's founding premise is only partly supported, and the honest version of the
