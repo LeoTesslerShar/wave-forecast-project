@@ -169,6 +169,26 @@ story is different from the one in the planning doc.**
 **Go/no-go for the calibration layer: GO, with reduced ambition and an honest headline.**
 Worth building, worth labelling precisely, not worth overselling.
 
+## What this means for the product
+
+This analysis is the reason the system described in `PROMPT.md` looks different from
+`docs/PLANNING.md`'s original plan. Concretely:
+
+- **No bias-correction layer was built.** There is nothing to correct in the 0.5-1.5 m band
+  a real surfer cares about. Building one anyway would mean presenting a heuristic as
+  validated -- exactly what hard rule 1 forbids.
+- **The miss-rate finding (13-21% of sessions missed at the top of the range) became a
+  threshold calibration, not a height correction.** See `prompts/phase-4-alerting.md`
+  section 6: the user picks an operating point (`strict`/`balanced`/`generous`) trading
+  false alarms for caught sessions, using the real GO/DON'T-GO numbers above. The displayed
+  height is never adjusted by this -- only which forecasts trigger an alert.
+- **The measured spread (roughly +/-0.19-0.25 m, 90% interval) sets a floor on how narrow
+  any displayed range may be.** No downstream heuristic (beach exposure, quality scoring)
+  may present a number more precise than this without its own evidence.
+- **Beach exposure (`prompts/phase-2-exposure.md`) and surf quality (`prompts/phase-3-quality.md`,
+  wind + chop ratio) became the main technical work**, since offshore height itself carries
+  little remaining signal to extract in the range that matters.
+
 ## Limitations
 
 - **One location.** DeepLev is 50 km off Haifa. Applying this correction 150 km south off

@@ -1,12 +1,26 @@
-# Phase 4 — Per-beach exposure layer
+# Phase 2 — Per-beach exposure layer
 
-Read `PROMPT.md` and `docs/PLANNING.md` (§6 Phase 4, §3) first.
+Read `PROMPT.md`, `docs/PLANNING.md` (§6 "Phase 4" in the original plan, §3), and
+`docs/BIAS_ANALYSIS.md` first.
 
-**Hard rule 1 is the defining constraint of this phase.** Everything built here is a
-geometric heuristic with no ground truth behind it — there are no instrumented buoys at the
-beaches, so nothing in this layer is validated and nothing from it may be presented as if
-it were. Build it anyway: it encodes the real observation that the same swell is mediocre
-at Bat Yam and excellent at Herzliya. Just label it honestly everywhere it surfaces.
+**This is now the main technical differentiator, not a late add-on.** The spike
+(`docs/BIAS_ANALYSIS.md`) found the offshore forecast is already accurate where the user
+surfs — there is no bias-correction layer to build. What actually varies, beach to beach,
+under the same offshore swell, is exposure: this layer is where the real value of the
+system lives now.
+
+**Hard rule 1 is still the defining constraint.** Everything built here is a geometric
+heuristic with no ground truth behind it — there are no instrumented buoys at the beaches,
+and DeepLev validated the offshore input, not the beach translation. Nothing in this layer
+is validated and nothing from it may be presented as if it were. Build it anyway: it
+encodes the real observation that the same swell is mediocre at Bat Yam and excellent at
+Herzliya. Label it honestly everywhere it surfaces.
+
+**Output framing has changed: lean on ranking, not absolute height.** Geometry can
+defensibly tell you Herzliya beats Bat Yam under a given swell. It cannot defensibly tell
+you Herzliya will be exactly 1.2 m. Compute the absolute adjustment if useful internally,
+but the primary product surface (Phase 3, Phase 5 UI) is **beaches ranked for the same
+hour**, not a single beach's estimated height presented as fact.
 
 ---
 
@@ -48,19 +62,21 @@ exposure = f(angular difference between swell direction and shoreline normal) ×
 
 ## 3. Surfacing it — the honest-labelling requirement
 
-Every forecast response carrying an exposure-adjusted value must carry, at minimum:
+There is no bias-correction layer feeding this one (see the header) — the input is the raw
+offshore forecast, which the spike showed is already accurate. Every forecast response
+carrying an exposure-adjusted value must carry, at minimum:
 
 ```json
 {
-  "wave_height_calibrated": 1.2,
-  "method": "calibrated+heuristic_exposure",
+  "wave_height_estimate": 1.2,
+  "wave_height_range": [1.0, 1.4],
+  "method": "raw_offshore+heuristic_exposure",
   "components": {
-    "raw": 1.5,
-    "bias_correction": -0.3,
+    "offshore_raw": 1.5,
     "exposure_factor": 0.8
   },
   "confidence": {
-    "bias_correction": "validated",
+    "offshore_raw": "measured_accurate",
     "exposure": "unvalidated_heuristic"
   },
   "exposure_basis": "shoreline bearing 265°, swell from 290°, no obstruction modelled"
@@ -69,8 +85,11 @@ Every forecast response carrying an exposure-adjusted value must carry, at minim
 
 Shape it as you like, but these properties are required:
 
-- the raw and the adjusted values are **both** visible — a consumer can always see what was
-  done to the number;
+- the raw offshore value and the exposure-adjusted value are **both** visible — a consumer
+  can always see what was done to the number;
+- a **range**, not a bare decimal — `docs/BIAS_ANALYSIS.md` measured the offshore spread at
+  roughly ±0.25 m (90% interval); carry at least that much width into the beach-level
+  estimate, more if the exposure adjustment adds its own uncertainty;
 - the exposure component is explicitly marked unvalidated;
 - the basis is human-readable, so a surfer who knows the spot can tell when the model is
   wrong about it.
@@ -86,9 +105,10 @@ Run and paste:
 
 1. The computed bearing for all 8–12 beaches, with a sanity assertion that each faces
    broadly seaward.
-2. A worked example for two beaches with contrasting orientations under the same swell —
-   Bat Yam vs Herzliya is the case from the planning doc — showing different exposure
-   scores and the reason.
+2. **The known-truth acceptance test:** a worked example for Bat Yam vs Herzliya under the
+   same swell — the case the planning doc opens with — showing Herzliya scoring higher and
+   the geometric reason why. If the geometry does not reproduce this ranking, the exposure
+   model is wrong; do not ship until it does.
 3. The direction-convention test, and a test showing an offshore/parallel swell scores ~0.
 4. An API response containing the full `components` / `confidence` structure.
 5. A grep or test proving no endpoint returns an exposure-adjusted value without the
