@@ -30,7 +30,7 @@ export const api = {
   // with confidence markers throughout. This is the ONLY data source for both the ranked
   // list (sorted client-side by the already-computed quality_score) and the single-beach
   // breakdown view.
-  getBeachQuality: (beachId, hours = 96) =>
+  getBeachQuality: (beachId, hours = 168) =>
     request(`/beaches/${encodeURIComponent(beachId)}/quality?hours=${hours}`),
 
   createSubscription: (body) =>

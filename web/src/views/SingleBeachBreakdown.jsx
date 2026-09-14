@@ -28,7 +28,7 @@ export default function SingleBeachBreakdown() {
     setHourly(null);
     setError(null);
     api
-      .getBeachQuality(beachId, 96)
+      .getBeachQuality(beachId, 168)
       .then((rows) => {
         setHourly(rows);
         const onDate = rows.filter((r) => localDateString(r.valid_at) === date);

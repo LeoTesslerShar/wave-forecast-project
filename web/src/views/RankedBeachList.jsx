@@ -22,7 +22,7 @@ export default function RankedBeachList() {
         const results = await Promise.all(
           beaches.map(async (beach) => {
             try {
-              const hourly = await api.getBeachQuality(beach.id, 96);
+              const hourly = await api.getBeachQuality(beach.id, 168);
               const best = bestHourForDate(hourly, date);
               return best ? { beach, best } : null;
             } catch {
