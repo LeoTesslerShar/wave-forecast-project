@@ -37,16 +37,19 @@ beaches:
   lon: 34.849
   shoreline_bearing: 282.3
   shoreline_bearing_source: computed_osm_coastline
-  shoreline_bearing_note: LOW CONFIDENCE -- thin tangent window, review against a
-    map
+  shoreline_bearing_note: bearing rests substantially on one 2410m straight OSM segment
+    -- real curvature within that span, if any, is not captured (see docs/DECISIONS.md;
+    verified this is a legitimate mapped way, not sparse/missing data)
 - id: ashdod
   name: Ashdod (Lido)
   lat: 31.783
   lon: 34.629
   shoreline_bearing: 295.2
   shoreline_bearing_source: computed_osm_coastline
-  shoreline_bearing_note: LOW CONFIDENCE -- thin tangent window, review against a
-    map; beach coord 578m from nearest OSM coastline
+  shoreline_bearing_note: bearing rests substantially on one 2079m straight OSM segment
+    -- real curvature within that span, if any, is not captured (see docs/DECISIONS.md;
+    verified this is a legitimate mapped way, not sparse/missing data); beach coord
+    578m from nearest OSM coastline
 - id: hadera
   name: Hadera
   lat: 32.437

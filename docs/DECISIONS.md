@@ -322,3 +322,44 @@ to run this. Added `scripts/alerting/generate_vapid_keys.py`, which:
 
 Never writes keys to a file or prints them anywhere but stdout, for the user to paste into
 their own `.env` -- consistent with hard rule 4.
+
+
+## 2026-09-14 -- Correction to the Phase 2 "thin window" flag
+
+The Phase 2 entry above ("Coastline window is 500m...") flagged Netanya and Ashdod as
+"thin window (1-3 points contributing)" and called that low confidence, deferring to a
+future visual map review that never happened (no map tool was available in any session).
+Revisited without a map tool, but with two things that WERE available: OSM's own way
+history, and a closer look at what "few points in the window" actually meant.
+
+**What was actually going on, verified via `https://www.openstreetmap.org/way/<id>`:**
+both beaches' bearings rest on legitimate, actively-maintained `natural=coastline` ways
+(way 95912704 near Netanya: 99 nodes, 21 edit versions, last touched 11 months ago; way
+386066841 near Ashdod: actively maintained, source-tagged, survived a vandalism revert).
+Neither is sparse or placeholder data. What actually happened: at both points, the nearest
+OSM segment is a single, deliberately-digitised straight run roughly 2-3km long -- so the
++/-250m window never reaches a second vertex in one or both directions, and
+`window_points_used` reads as low (1) even though the underlying data is fine. A long
+straight segment is not weaker evidence than several short jittery ones; if anything it is
+a cleaner tangent. Confirmed the bearing value itself did not need correcting -- an
+independent visual/analytical check (OSM history) found no error, only a mischaracterised
+diagnostic.
+
+**What was a real bug, found while fixing the diagnostic:** the original
+`max_segment_span_m` (added to replace the point-count check) was capped at the window's
+own half-width (250m) instead of reporting the segment's true length beyond that point --
+so it read exactly 250.0 for both beaches regardless of whether the real segment was 300m
+or 3km, which would have produced the same misleadingly-vague "long-ish" signal for every
+thin-window case. Fixed in `app/exposure/bearing.py::_windowed_tangent` to report the
+actual per-hop distance (`d`) rather than the truncated remaining budget in both the
+backward and forward truncation branches. Regression test:
+`tests/test_exposure_geometry.py::test_max_segment_span_reports_true_length_not_capped_at_window_budget`.
+
+`scripts/exposure/compute_bearings.py` re-run after the fix: bearings for all 8 beaches are
+**numerically unchanged** (this was a diagnostic-only fix). Netanya and Ashdod now carry an
+accurate, narrower caveat -- "bearing rests substantially on one ~2-2.4km straight OSM
+segment; real curvature within that span, if any, is not captured" -- instead of the
+original, overstated "LOW CONFIDENCE... review against a map." The caveat is real (a
+method that only sees vertices cannot see curvature between them) but it is not evidence
+the value is wrong, and should not have been presented as though it might be without
+checking first.

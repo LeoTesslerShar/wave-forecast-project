@@ -95,3 +95,18 @@ def test_no_shoreline_bearing_degrades_to_fully_exposed_not_a_crash():
     r = compute_exposure(32.0, 34.7, None, 280.0)
     assert r.exposure_factor == 1.0
     assert r.method == "no_shoreline_bearing_available"
+
+
+def test_max_segment_span_reports_true_length_not_capped_at_window_budget():
+    """Regression test for a bug caught during review: the walk truncates at the window
+    budget (250m half-window), but max_segment_span_m must report the underlying segment's
+    real length beyond that point, not the budget itself. Netanya and Ashdod both rest on
+    OSM segments ~2-3km long (verified as legitimate mapped coastline, not sparse data --
+    docs/DECISIONS.md); the bug reported exactly 250.0 for both, which is the window's own
+    half-width by construction and would be true regardless of the underlying data."""
+    for lat, lon in [(32.321, 34.849), (31.783, 34.629)]:  # netanya, ashdod
+        r = compute_shoreline_bearing(lat, lon)
+        assert r.max_segment_span_m > 250.0, (
+            f"max_segment_span_m={r.max_segment_span_m} looks capped at the window "
+            f"half-width rather than reporting the real segment length"
+        )

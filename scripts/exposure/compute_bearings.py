@@ -36,33 +36,43 @@ HEADER = """\
 """
 
 
-# Below this many coastline points contributing to the tangent window, the bearing is
-# geometrically thin (see app/exposure/bearing.py) -- flagged for manual map review rather
-# than silently trusted.
-LOW_CONFIDENCE_POINT_THRESHOLD = 2
+# Corrected 2026-09-14 (docs/DECISIONS.md): a low `window_points_used` count was
+# ORIGINALLY treated as "thin data, low confidence." Verified against OSM's own edit
+# history for the two beaches this flagged (Netanya, Ashdod) and found both are legitimate,
+# actively-maintained coastline ways where THIS specific stretch happens to be one long
+# straight segment (~2.9-3km) with few vertices -- not missing or sparse data. A long
+# straight segment is often a MORE stable tangent than several short jittery ones. The real,
+# narrower limitation: if the actual coast curves within that unsubdivided span, this
+# method cannot see it, because OSM recorded no vertex there to show it. That is what
+# MAX_SEGMENT_SPAN_NOTE_THRESHOLD_M flags -- a scoped caveat, not a "may be wrong" flag.
+MAX_SEGMENT_SPAN_NOTE_THRESHOLD_M = 1500.0
 
 
 def main() -> None:
     data = yaml.safe_load(BEACHES_YML.read_text(encoding="utf-8"))
 
-    print(f"{'beach':18s} {'bearing':>8s} {'tangent':>8s} {'dist_m':>8s} {'pts':>4s}  note")
+    print(f"{'beach':18s} {'bearing':>8s} {'tangent':>8s} {'dist_m':>8s} {'pts':>4s} {'span_m':>7s}  note")
     for b in data["beaches"]:
         if b.get("shoreline_bearing_override") is not None:
-            print(f"{b['id']:18s} {'--':>8s} {'--':>8s} {'--':>8s} {'--':>4s}  manual override kept")
+            print(f"{b['id']:18s} {'--':>8s} {'--':>8s} {'--':>8s} {'--':>4s} {'--':>7s}  manual override kept")
             b["shoreline_bearing"] = b["shoreline_bearing_override"]
             b["shoreline_bearing_source"] = "manual_override"
             continue
 
         r = compute_shoreline_bearing(b["lat"], b["lon"])
         note = ""
-        if r.window_points_used <= LOW_CONFIDENCE_POINT_THRESHOLD:
-            note = "LOW CONFIDENCE -- thin tangent window, review against a map"
+        if r.max_segment_span_m >= MAX_SEGMENT_SPAN_NOTE_THRESHOLD_M:
+            note = (
+                f"bearing rests substantially on one {r.max_segment_span_m:.0f}m straight OSM "
+                f"segment -- real curvature within that span, if any, is not captured (see "
+                f"docs/DECISIONS.md; verified this is a legitimate mapped way, not sparse/missing data)"
+            )
         if r.distance_to_coast_m > 500:
             note = (note + "; " if note else "") + f"beach coord {r.distance_to_coast_m:.0f}m from nearest OSM coastline"
 
         print(
             f"{b['id']:18s} {r.bearing_deg:8.1f} {r.tangent_bearing_deg:8.1f} "
-            f"{r.distance_to_coast_m:8.1f} {r.window_points_used:4d}  {note}"
+            f"{r.distance_to_coast_m:8.1f} {r.window_points_used:4d} {r.max_segment_span_m:7.0f}  {note}"
         )
 
         b["shoreline_bearing"] = r.bearing_deg

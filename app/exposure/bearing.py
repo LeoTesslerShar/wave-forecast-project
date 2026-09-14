@@ -32,6 +32,13 @@ class BearingResult:
     tangent_bearing_deg: float  # the shoreline's own local direction, for debugging
     distance_to_coast_m: float
     window_points_used: int
+    # The longest single unsubdivided OSM segment contributing to the window, in metres.
+    # NOT a data-quality signal by itself -- a long straight segment can be a deliberate,
+    # accurate digitisation of a genuinely straight stretch of coast (verified against two
+    # real cases via OSM's own edit history, docs/DECISIONS.md), and often gives a MORE
+    # stable tangent than several short jittery vertices would. What it does mean: any real
+    # curvature *within* that span is invisible to this method, since OSM recorded none.
+    max_segment_span_m: float
     method: str = "osm_coastline_window_tangent"
 
 
@@ -54,8 +61,9 @@ def _nearest_on_polyline(
 
 def _windowed_tangent(
     pts_xy: list[tuple[float, float]], seg_idx: int, t: float, closest_xy: tuple[float, float], window_m: float
-) -> tuple[float, int]:
+) -> tuple[float, int, float]:
     half = window_m / 2
+    max_span = 0.0
 
     # Walk backward from the closest point, accumulating distance until half-window or the
     # start of the line.
@@ -70,9 +78,15 @@ def _windowed_tangent(
         if d >= remaining:
             frac = remaining / d if d > 0 else 0
             back_point = (cur[0] + (seg_start[0] - cur[0]) * frac, cur[1] + (seg_start[1] - cur[1]) * frac)
+            # Report the segment's REAL length (d), not just the portion of it the window
+            # budget covered -- a 3km segment truncated at 250m is still a 3km segment;
+            # capping this at the budget would understate how far the "no curvature
+            # visible here" caveat actually extends.
+            max_span = max(max_span, d)
             remaining = 0
             break
         remaining -= d
+        max_span = max(max_span, d)
         cur = seg_start
         back_point = cur
         i -= 1
@@ -90,9 +104,11 @@ def _windowed_tangent(
         if d >= remaining:
             frac = remaining / d if d > 0 else 0
             fwd_point = (cur[0] + (seg_end[0] - cur[0]) * frac, cur[1] + (seg_end[1] - cur[1]) * frac)
+            max_span = max(max_span, d)  # real segment length, not just the budget used
             remaining = 0
             break
         remaining -= d
+        max_span = max(max_span, d)
         cur = seg_end
         fwd_point = cur
         i += 1
@@ -105,7 +121,7 @@ def _windowed_tangent(
         dx, dy = pts_xy[min(seg_idx + 1, len(pts_xy) - 1)][0] - pts_xy[seg_idx][0], \
                   pts_xy[min(seg_idx + 1, len(pts_xy) - 1)][1] - pts_xy[seg_idx][1]
     tangent_bearing = (math.degrees(math.atan2(dx, dy)) + 360) % 360
-    return tangent_bearing, n_back + n_fwd + 1
+    return tangent_bearing, n_back + n_fwd + 1, max_span
 
 
 def compute_shoreline_bearing(
@@ -129,7 +145,7 @@ def compute_shoreline_bearing(
         raise ValueError("no coastline geometry loaded -- check scripts/exposure/coastline.geojson")
 
     dist, seg_idx, t, closest_xy, pts_xy = best
-    tangent_bearing, n_points = _windowed_tangent(pts_xy, seg_idx, t, closest_xy, window_m)
+    tangent_bearing, n_points, max_span = _windowed_tangent(pts_xy, seg_idx, t, closest_xy, window_m)
 
     normal_a = (tangent_bearing + 90) % 360
     normal_b = (tangent_bearing - 90) % 360
@@ -140,6 +156,7 @@ def compute_shoreline_bearing(
         tangent_bearing_deg=round(tangent_bearing, 1),
         distance_to_coast_m=round(dist, 1),
         window_points_used=n_points,
+        max_segment_span_m=round(max_span, 1),
     )
 
 

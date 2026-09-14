@@ -194,10 +194,15 @@ cd web && npm install && npm run build
 - No ground truth exists at any actual Israeli beach. Beach exposure and quality scoring
   are geometry and local knowledge, not measurement, labelled as such in every API
   response, permanently, by design.
-- Two beaches' shoreline bearings (`netanya`, `ashdod`) were computed from a thin
-  coastline window and flagged in `data/beaches.yml` for manual review -- no visual map
-  review was performed in this session (no map-viewing tool was available). Cross-checked
-  for consistency against neighbouring beaches instead; see `docs/DECISIONS.md`.
+- Two beaches' shoreline bearings (`netanya`, `ashdod`) originally read "thin window, low
+  confidence" -- revisited via OSM's own way history (no map-viewing tool was available,
+  but the OSM edit history was): both rest on legitimate, actively-maintained coastline
+  ways that happen to be one long straight ~2-2.4km segment at that point, not sparse
+  data. The bearing values were not wrong; the diagnostic mischaracterised them, and a real
+  bug in that diagnostic (capping the reported segment length at the window's own budget)
+  was found and fixed while correcting it. See `docs/DECISIONS.md` for the full story.
+  Genuine, narrower caveat that remains: this method cannot see coastline curvature that
+  falls between two OSM vertices, which for these two beaches spans ~2-2.4km.
 - Obstruction detection thresholds, quality-verdict weights/caps, and material-change
   thresholds are all judgement calls with no ground truth to tune them against -- every
   one is named as a constant and defended in `docs/DECISIONS.md`.
