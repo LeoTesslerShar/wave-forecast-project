@@ -125,3 +125,57 @@ generous enough to always find a match while still meaning "this hour," not "whe
 last happened to have data." A beach with no forecast in that window is dropped from the
 ranking rather than shown with a null height -- consistent with graceful degradation
 (hard rule 7): a gap in one beach's data doesn't corrupt the ranking, it just narrows it.
+
+
+## 2026-09-14 -- Phase 3
+
+### Verdict combiner: weighted sum for ranking, capped by explicit rules for the label
+
+`app/quality/verdict.py` computes a numeric `quality_score` from a weighted sum (wind 0.40,
+size 0.25, chop 0.25, period 0.10 -- wind weighted highest per the phase prompt's own
+framing of it as "the decisive quality factor"), then maps that score to a five-step
+ladder (flat/poor/fair/good/excellent). Two hard caps sit on top of the numeric ladder:
+onshore wind and choppy conditions each cap the verdict at "fair," regardless of how the
+weighted arithmetic comes out. Verified this cap is not dead code: a hand-constructed case
+with excellent size/period/chop and only borderline-onshore wind lands the weighted sum
+exactly on the "good" threshold (0.60) and the cap pulls it back to "fair" --
+see the test suite's boundary case. Both the weights and the cap threshold are judgement
+calls with no ground truth to tune them against (hard rule 1); they are not fitted to
+anything.
+
+### Wind: angle drives the label, speed only gates "glassy" and the gust penalty
+
+`app/quality/wind.py` scores wind purely on the angle between its arrival and the
+shoreline normal once above `LIGHT_WIND_KMH` (8 km/h) -- a 12 km/h onshore breeze and a
+35 km/h onshore gale score identically on the directional component, because the
+underlying physics (chop building up the face) is about the direction the energy comes
+from, not really an urgent function of magnitude beyond "enough to matter." Speed only
+enters twice: below 8 km/h, direction is overridden to "glassy" (near-best regardless of
+label); and a gust/mean spread of 15 km/h or more applies a flat 0.8 multiplicative
+penalty. Both thresholds are judgement calls.
+
+### Size bands reuse BIAS_ANALYSIS.md's regime boundaries, with one deliberate deviation
+
+`app/quality/size.py` reuses the 0.5/1.0/1.5/2.5m boundaries from
+`docs/BIAS_ANALYSIS.md`'s own MAE-by-regime table, so "rideable" means the same thing here
+it meant there. The one addition -- a `flat` cutoff at 0.3m rather than that document's own
+0.5m "flat" bucket boundary -- reflects that BIAS_ANALYSIS's own 0.5m bucket had a median
+around 0.3m within it, i.e. most of that bucket genuinely was closer to flat than to
+surfable; 0.3m is this project's own judgement call, not measured.
+
+### Period thresholds are a local judgement call, not imported from elsewhere
+
+6s/8s for weak/workable/good. The phase prompt explicitly warned against importing
+thresholds tuned for a long-fetch ocean coast; these were chosen to match the short-fetch
+character of Eastern Mediterranean wind-swell, which DeepLev's own period data
+(docs/BIAS_ANALYSIS.md) supports as the right order of magnitude, but they are not fitted
+to anything -- there is no surf-quality ground truth to fit them to. Bands are 2s wide,
+comfortably wider than the ~0.97s period MAE measured against DeepLev, so they do not
+imply resolution the forecast does not have.
+
+### `/beaches/{id}/quality` is hour-by-hour by construction, not aggregated
+
+There is no daily rollup anywhere in the quality pipeline. Each hour's Forecast row is
+scored independently against that hour's own wind, so a stormy afternoon's big number
+cannot leak into the following dawn's verdict -- this is the entire point of the phase
+(section 2, "the local pattern"), enforced structurally rather than by discipline.

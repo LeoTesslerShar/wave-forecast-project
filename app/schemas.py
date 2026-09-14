@@ -71,6 +71,44 @@ class ExposureEstimateOut(BaseModel):
     exposure_basis: str
 
 
+class QualityWindOut(BaseModel):
+    speed_kmh: float | None
+    direction_deg: float | None
+    relation_to_shore: str  # "onshore" | "cross-shore" | "offshore" | "glassy" | "unknown"
+    gusts_kmh: float | None
+    gusty: bool
+
+
+class QualityConfidence(BaseModel):
+    """prompts/phase-3-quality.md section 5. `size` and `quality_verdict` are always
+    unvalidated_heuristic -- hard rule 1 -- guaranteed the same way as
+    ExposureConfidence.exposure: grepped in tests/test_quality_api.py."""
+
+    size: str = "unvalidated_heuristic"
+    period: str
+    wind: str = "measured_forecast"
+    chop: str = "unvalidated_heuristic"
+    quality_verdict: str = "unvalidated_heuristic"
+
+
+class QualityOut(BaseModel):
+    """prompts/phase-3-quality.md section 5. Every component is visible individually --
+    no opaque single number -- plus the combined verdict and confidence markers throughout."""
+
+    beach_id: str
+    valid_at: datetime
+    size: ExposureEstimateOut
+    period_s: float | None
+    period_band: str
+    wind: QualityWindOut
+    chop_ratio: float | None
+    chop_band: str
+    quality_score: float
+    quality_verdict: str  # "flat" | "poor" | "fair" | "good" | "excellent"
+    quality_reasoning: str
+    confidence: QualityConfidence
+
+
 class MeasurementOut(BaseModel):
     buoy_id: str
     observed_at: datetime

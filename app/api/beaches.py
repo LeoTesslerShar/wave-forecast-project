@@ -8,8 +8,9 @@ from app import cache
 from app.db import get_session
 from app.exposure.apply import build_exposure_estimate
 from app.models import Beach
+from app.quality.apply import build_quality
 from app.queries import get_latest_forecasts
-from app.schemas import BeachOut, ExposureEstimateOut, ForecastOut
+from app.schemas import BeachOut, ExposureEstimateOut, ForecastOut, QualityOut
 from app.settings import get_settings
 
 router = APIRouter()
@@ -62,6 +63,26 @@ async def beach_exposure(
     now = datetime.now(UTC)
     rows = await get_latest_forecasts(session, beach_id, now, now + timedelta(hours=hours))
     return [build_exposure_estimate(beach, r) for r in rows]
+
+
+@router.get("/beaches/{beach_id}/quality", response_model=list[QualityOut])
+async def beach_quality(
+    beach_id: str, hours: int | None = None, session: AsyncSession = Depends(get_session)
+) -> list[QualityOut]:
+    """Surf quality per hour -- prompts/phase-3-quality.md. Hour-by-hour, not a daily
+    aggregate: wind rotates through a stormy window, and a good headline height earlier
+    must not leak into a later hour's verdict (section 2, "the local pattern"). Not cached,
+    same reasoning as /exposure."""
+    beach = await session.get(Beach, beach_id)
+    if beach is None:
+        raise HTTPException(status_code=404, detail=f"unknown beach '{beach_id}'")
+
+    settings = get_settings()
+    hours = hours or settings.forecast_hours_ahead
+
+    now = datetime.now(UTC)
+    rows = await get_latest_forecasts(session, beach_id, now, now + timedelta(hours=hours))
+    return [build_quality(beach, r) for r in rows]
 
 
 @router.get("/conditions", response_model=list[ExposureEstimateOut])

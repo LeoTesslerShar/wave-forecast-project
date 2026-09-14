@@ -19,15 +19,15 @@ curve. **The honest value of this system is convenience, beach discrimination an
 judgement -- not superior wave-height accuracy.** Full story in
 [`PROMPT.md`](PROMPT.md) section 1.
 
-## Status: Phase 2 (beach exposure) complete
+## Status: Phase 3 (surf quality scoring) complete
 
 | Phase | Status |
 |---|---|
 | 0 -- data source verification | done, historical record ([`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)) |
 | 0.5 -- DeepLev spike | done, historical record ([`docs/BIAS_ANALYSIS.md`](docs/BIAS_ANALYSIS.md)) |
 | 1 -- ingestion | done: forecast (wave + wind) + Hadera buoy, scheduled, idempotent, gap-backfilled |
-| **2 -- beach exposure** | **this build**: shoreline bearing from OSM coastline, directional + obstruction scoring, beach ranking |
-| 3 -- surf quality scoring | not built |
+| 2 -- beach exposure | done: shoreline bearing from OSM coastline, directional + obstruction scoring, beach ranking |
+| **3 -- surf quality scoring** | **this build**: wind, period, chop ratio combined into an hour-by-hour verdict |
 | 4 -- alerting | not built |
 | 5 -- frontend | not built |
 
@@ -72,14 +72,38 @@ the offshore forecast itself needs no correction (`docs/BIAS_ANALYSIS.md`):
   a `wave_height_range` never narrower than the offshore forecast's own measured
   uncertainty (~+/-0.25m, `docs/BIAS_ANALYSIS.md`) -- hard rule 1.
 
-- 33 tests, no live network (every upstream response mocked from a committed fixture; the
-  exposure tests run against the committed real coastline/structure geometry, not mocks).
+**Phase 3 -- surf quality scoring** (`app/quality/`): height alone doesn't say whether a
+session is worth having -- wind and chop do. Combines Phase 2's exposure-adjusted size with
+wind, period and chop ratio into one hour-by-hour verdict:
+
+- **Wind** (`app/quality/wind.py`) -- the decisive factor. Scored by the angle between
+  wind direction and the beach's shoreline normal: offshore grooms the face (best),
+  onshore chops it up (worst), light wind (<8 km/h) is glassy regardless of direction, a
+  large gust/mean spread is flagged and penalised.
+- **Period** (`app/quality/period.py`) -- thresholds tuned for the Eastern Mediterranean's
+  short-fetch wind-swell character, not imported from a long-fetch ocean coast.
+- **Chop ratio** (`app/quality/chop.py`) -- `wind_wave_height / total`, free from data
+  already ingested in Phase 1. A "good" height that's mostly wind-chop scores worse than
+  the same height as clean groundswell.
+- **Combiner** (`app/quality/verdict.py`) -- a weighted sum (wind weighted highest) for
+  fine-grained ranking, capped by explicit rules (onshore wind and choppy conditions cap
+  the verdict at "fair" no matter how the arithmetic comes out) -- not a fitted model, no
+  ground truth exists to fit one to.
+- `GET /beaches/{id}/quality` -- every component visible individually (size, period, wind,
+  chop) plus the combined verdict and reasoning, hour-by-hour (a stormy afternoon's big
+  number never leaks into the following dawn's score).
+- Encodes the local pattern explicitly: off Israel the swell arrives *with* the westerly
+  wind that generated it, so the storm peak itself is often the worst hour to go, and the
+  following dawn -- once the land breeze turns offshore -- is when it cleans up. Verified
+  directly: a storm-peak test case scores "fair" (capped by onshore wind) while the
+  following dawn with smaller, cleaner swell scores "excellent."
+
+- 41 tests, no live network.
 
 ## What is NOT built yet
 
-Surf quality scoring (wind, chop ratio), alerting/subscriptions, and any frontend. Every
-forecast response already carries a `method` field so no future caller ever sees an
-unlabelled number once those layers exist.
+Alerting/subscriptions and any frontend. Every forecast response already carries a
+`method` field so no future caller ever sees an unlabelled number.
 
 ## Running it
 
@@ -97,6 +121,7 @@ curl http://localhost:8000/beaches
 curl "http://localhost:8000/beaches/herzliya/forecast?hours=24"
 curl "http://localhost:8000/beaches/herzliya/exposure?hours=24"
 curl "http://localhost:8000/conditions"      # all beaches ranked for the next hour
+curl "http://localhost:8000/beaches/herzliya/quality?hours=24"   # size+period+wind+chop verdict, per hour
 ```
 
 Tests (needs Postgres + Redis reachable -- `docker compose up -d postgres redis` then run
