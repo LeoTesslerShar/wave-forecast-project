@@ -1,0 +1,7 @@
+[out:json][timeout:60];
+(
+  way["man_made"="breakwater"](31.6,34.2,32.9,35.2);
+  way["man_made"="pier"](31.6,34.2,32.9,35.2);
+  way["man_made"="groyne"](31.6,34.2,32.9,35.2);
+);
+out geom;

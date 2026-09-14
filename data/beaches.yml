@@ -2,81 +2,99 @@
 #
 # Coordinate source: approximate, read off public map services (OpenStreetMap /
 # Google Maps) at the known surf break for each spot, 2026-09-14. NOT surveyed, NOT
-# validated against any authoritative source. These are starting points for the
-# shoreline-bearing computation in Phase 2, which explicitly requires reviewing every
-# computed bearing against a map -- treat these coordinates with the same scrutiny.
+# validated against any authoritative source.
 #
-# shoreline_bearing is intentionally absent here -- Phase 2 computes and writes it.
+# shoreline_bearing / shoreline_bearing_source / shoreline_bearing_note: written by
+# scripts/exposure/compute_bearings.py (prompts/phase-2-exposure.md section 1). Computed
+# from OSM coastline geometry (scripts/exposure/coastline.geojson) -- do not hand-edit.
+# To correct a value after reviewing it against a map, set `shoreline_bearing_override`
+# on that beach and re-run the script; it will keep your override and stop recomputing
+# that beach automatically.
 
 beaches:
-  - id: bat_yam
-    name: "Bat Yam"
-    lat: 32.0133
-    lon: 34.7432
-
-  - id: herzliya
-    name: "Herzliya"
-    lat: 32.1660
-    lon: 34.7960
-
-  - id: palmachim
-    name: "Palmachim"
-    lat: 31.9300
-    lon: 34.6940
-
-  - id: netanya
-    name: "Netanya (Sironit)"
-    lat: 32.3210
-    lon: 34.8490
-
-  - id: ashdod
-    name: "Ashdod (Lido)"
-    lat: 31.7830
-    lon: 34.6290
-
-  - id: hadera
-    name: "Hadera"
-    lat: 32.4370
-    lon: 34.8830
-
-  - id: olga
-    name: "Olga"
-    lat: 32.4000
-    lon: 34.8700
-
-  - id: tel_aviv_hilton
-    name: "Tel Aviv (Hilton)"
-    lat: 32.0870
-    lon: 34.7690
-
+- id: bat_yam
+  name: Bat Yam
+  lat: 32.0133
+  lon: 34.7432
+  shoreline_bearing: 284.6
+  shoreline_bearing_source: computed_osm_coastline
+  shoreline_bearing_note: beach coord 611m from nearest OSM coastline
+- id: herzliya
+  name: Herzliya
+  lat: 32.166
+  lon: 34.796
+  shoreline_bearing: 301.1
+  shoreline_bearing_source: computed_osm_coastline
+- id: palmachim
+  name: Palmachim
+  lat: 31.93
+  lon: 34.694
+  shoreline_bearing: 296.7
+  shoreline_bearing_source: computed_osm_coastline
+- id: netanya
+  name: Netanya (Sironit)
+  lat: 32.321
+  lon: 34.849
+  shoreline_bearing: 282.3
+  shoreline_bearing_source: computed_osm_coastline
+  shoreline_bearing_note: LOW CONFIDENCE -- thin tangent window, review against a
+    map
+- id: ashdod
+  name: Ashdod (Lido)
+  lat: 31.783
+  lon: 34.629
+  shoreline_bearing: 295.2
+  shoreline_bearing_source: computed_osm_coastline
+  shoreline_bearing_note: LOW CONFIDENCE -- thin tangent window, review against a
+    map; beach coord 578m from nearest OSM coastline
+- id: hadera
+  name: Hadera
+  lat: 32.437
+  lon: 34.883
+  shoreline_bearing: 281.5
+  shoreline_bearing_source: computed_osm_coastline
+  shoreline_bearing_note: beach coord 570m from nearest OSM coastline
+- id: olga
+  name: Olga
+  lat: 32.4
+  lon: 34.87
+  shoreline_bearing: 262.4
+  shoreline_bearing_source: computed_osm_coastline
+- id: tel_aviv_hilton
+  name: Tel Aviv (Hilton)
+  lat: 32.087
+  lon: 34.769
+  shoreline_bearing: 283.6
+  shoreline_bearing_source: computed_osm_coastline
 buoys:
-  - id: hadera_isramar
-    name: "Hadera (ISRAMAR)"
-    lat: 32.470
-    lon: 34.880
-    source: isramar
-    active: true
-    licence_note: >
-      IOLR "All Rights Reserved" notice found on the station page
-      (docs/DATA_SOURCES.md) -- written permission not yet obtained.
-      Do not redistribute this data outside personal/research use.
+- id: hadera_isramar
+  name: Hadera (ISRAMAR)
+  lat: 32.47
+  lon: 34.88
+  source: isramar
+  active: true
+  licence_note: 'IOLR "All Rights Reserved" notice found on the station page (docs/DATA_SOURCES.md)
+    -- written permission not yet obtained. Do not redistribute this data outside
+    personal/research use.
 
-  - id: ashdod_cameri
-    name: "Ashdod (CAMERI)"
-    lat: 31.83
-    lon: 34.63
-    source: cameri
-    active: false
-    licence_note: >
-      No accessible endpoint -- ADVA requires a gated API request
-      (docs/DATA_SOURCES.md). Modelled but not ingested.
+    '
+- id: ashdod_cameri
+  name: Ashdod (CAMERI)
+  lat: 31.83
+  lon: 34.63
+  source: cameri
+  active: false
+  licence_note: 'No accessible endpoint -- ADVA requires a gated API request (docs/DATA_SOURCES.md).
+    Modelled but not ingested.
 
-  - id: haifa_cameri
-    name: "Haifa (CAMERI)"
-    lat: 32.83
-    lon: 34.97
-    source: cameri
-    active: false
-    licence_note: >
-      No accessible endpoint -- ADVA requires a gated API request
-      (docs/DATA_SOURCES.md). Modelled but not ingested.
+    '
+- id: haifa_cameri
+  name: Haifa (CAMERI)
+  lat: 32.83
+  lon: 34.97
+  source: cameri
+  active: false
+  licence_note: 'No accessible endpoint -- ADVA requires a gated API request (docs/DATA_SOURCES.md).
+    Modelled but not ingested.
+
+    '

@@ -62,3 +62,66 @@ Simpler, and sufficient for "did a scheduled run get missed" -- a partial day wi
 rows present almost never happens under normal operation (a run either fires for all
 beaches or the process is down). If sub-day gaps turn out to matter in practice, this is
 the place to revisit.
+
+
+## 2026-09-14 -- Phase 2
+
+### Seaward-normal ambiguity resolved by "closer to due west", not a general algorithm
+
+`app/exposure/bearing.py` computes a tangent bearing across a windowed stretch of OSM
+coastline, which gives two candidate normals 180 degrees apart -- one seaward, one
+inland. Resolved by picking whichever candidate is closer to 270 degrees (west), because
+the Israeli Mediterranean coast runs roughly north-south with the sea to the west for the
+whole bounding box this project covers. This is a fact about this specific coastline, not
+a general land/sea classifier -- ported to a coast of a different orientation, this
+resolution rule would need to change (documented in the module itself, and asserted as a
+sanity test in tests/test_exposure_geometry.py).
+
+### Coastline window is 500m, not the single nearest OSM segment
+
+Section 1 of the phase prompt warned that one OSM coastline segment can be up to ~40
+degrees off the true local orientation. Walking +/-250m of arc length around the nearest
+point and taking the tangent across that window absorbs most of that noise. 500m was not
+tuned against anything -- it is a judgement call, documented as one. Two beaches
+(`netanya`, `ashdod`) landed on a thin window (1-3 points contributing) and are flagged
+with `shoreline_bearing_note` in `data/beaches.yml` for manual review; their values were
+still cross-checked for consistency against neighbouring beaches' tangents before being
+accepted (see the script's own output, captured in the Phase 2 commit message) -- no
+visual map review was performed in this session, since no map-viewing tool was available.
+
+### Obstruction: a real bug found via the Bat Yam vs Herzliya acceptance test
+
+The first working version of `app/exposure/obstruction.py` sampled a ray from the beach
+coordinate starting at 100m out. Herzliya's seeded coordinate sits ~93m from the marina
+breakwater, so the very first sample was still close enough to trigger a "hit" for nearly
+every swell direction -- obstruction stopped tracking direction at all and instead just
+reflected "is this beach near any structure." Fixed with
+`OBSTRUCTION_MIN_CHECK_DISTANCE_M = 300` -- samples closer than 300m to the beach itself
+are skipped, since a structure that close is more likely something beside the access point
+than a true offshore shadow-caster. `tests/test_exposure_obstruction.py::test_varies_by_direction_not_constant`
+is a regression test for this specific failure mode.
+
+`OBSTRUCTION_CHECK_RANGE_M` (1500m), `OBSTRUCTION_LATERAL_THRESHOLD_M` (150m), and
+`OBSTRUCTION_STRENGTH` (a flat 0.4 reduction, not a modelled shadow angle) are all
+judgement calls with no ground truth to tune them against -- this is exactly the kind of
+heuristic hard rule 1 requires labelling, and it is labelled (`confidence.exposure:
+"unvalidated_heuristic"` on every API response that uses it).
+
+### Exposure range floor: never narrower than the measured offshore spread
+
+`app/exposure/apply.py` widens the displayed range by a flat +/-0.25m
+(`OFFSHORE_UNCERTAINTY_M`), taken directly from `docs/BIAS_ANALYSIS.md`'s measured 90%
+error interval on the offshore forecast. Exposure is a multiplicative heuristic on top of
+that already-uncertain number; the range must never imply more precision than the
+validated layer itself has, so this floor is applied regardless of how confident the
+exposure factor looks.
+
+### `/conditions` ranking window: nearest hour, +/-30 minutes
+
+The ranked-conditions endpoint (prompts/phase-2-exposure.md: "the primary product surface
+is beaches ranked for the same hour") defaults to the next full hour and pulls each
+beach's latest forecast within 30 minutes of it. Since forecasts are hourly, this is
+generous enough to always find a match while still meaning "this hour," not "whenever we
+last happened to have data." A beach with no forecast in that window is dropped from the
+ranking rather than shown with a null height -- consistent with graceful degradation
+(hard rule 7): a gap in one beach's data doesn't corrupt the ranking, it just narrows it.

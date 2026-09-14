@@ -20,16 +20,25 @@ async def seed_beaches_and_buoys(session: AsyncSession) -> dict:
 
     beach_count = 0
     for b in data.get("beaches", []):
+        # shoreline_bearing is written by scripts/exposure/compute_bearings.py
+        # (prompts/phase-2-exposure.md section 1), not computed here -- this just carries
+        # whatever that script last wrote into data/beaches.yml through to the DB.
         stmt = pg_insert(Beach).values(
             id=b["id"],
             name=b["name"],
             lat=b["lat"],
             lon=b["lon"],
+            shoreline_bearing=b.get("shoreline_bearing"),
             coordinate_source="data/beaches.yml, approximate public map lookup, unsurveyed",
         )
         stmt = stmt.on_conflict_do_update(
             index_elements=["id"],
-            set_={"name": stmt.excluded.name, "lat": stmt.excluded.lat, "lon": stmt.excluded.lon},
+            set_={
+                "name": stmt.excluded.name,
+                "lat": stmt.excluded.lat,
+                "lon": stmt.excluded.lon,
+                "shoreline_bearing": stmt.excluded.shoreline_bearing,
+            },
         )
         await session.execute(stmt)
         beach_count += 1

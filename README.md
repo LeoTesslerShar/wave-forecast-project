@@ -19,14 +19,14 @@ curve. **The honest value of this system is convenience, beach discrimination an
 judgement -- not superior wave-height accuracy.** Full story in
 [`PROMPT.md`](PROMPT.md) section 1.
 
-## Status: Phase 1 (ingestion) complete
+## Status: Phase 2 (beach exposure) complete
 
 | Phase | Status |
 |---|---|
 | 0 -- data source verification | done, historical record ([`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)) |
 | 0.5 -- DeepLev spike | done, historical record ([`docs/BIAS_ANALYSIS.md`](docs/BIAS_ANALYSIS.md)) |
-| **1 -- ingestion** | **this build**: forecast (wave + wind) + Hadera buoy, scheduled, idempotent, gap-backfilled |
-| 2 -- beach exposure | not built |
+| 1 -- ingestion | done: forecast (wave + wind) + Hadera buoy, scheduled, idempotent, gap-backfilled |
+| **2 -- beach exposure** | **this build**: shoreline bearing from OSM coastline, directional + obstruction scoring, beach ranking |
 | 3 -- surf quality scoring | not built |
 | 4 -- alerting | not built |
 | 5 -- frontend | not built |
@@ -50,13 +50,36 @@ judgement -- not superior wave-height accuracy.** Full story in
   logs it to `ingestion_runs`, and never blocks the others or crashes the app.
 - `GET /health`, `GET /beaches`, `GET /beaches/{id}/forecast`,
   `GET /buoys/{id}/measurements`.
-- 19 tests, no live network (every upstream response mocked from a committed fixture).
+
+**Phase 2 -- beach exposure** (`app/exposure/`), the main technical differentiator now that
+the offshore forecast itself needs no correction (`docs/BIAS_ANALYSIS.md`):
+
+- `shoreline_bearing` computed per beach from OSM coastline geometry
+  (`scripts/exposure/coastline.geojson`, a committed extract -- see
+  `scripts/exposure/fetch_coastline.py` for provenance) and written into
+  `data/beaches.yml` by `scripts/exposure/compute_bearings.py`.
+- Directional exposure: cosine of the angle between swell arrival and the shoreline
+  normal, clamped to zero beyond 90 degrees.
+- Obstruction: a coarse ray-cast against OSM breakwaters/piers/groynes
+  (`scripts/exposure/structures.geojson`).
+- `GET /beaches/{id}/exposure` -- exposure-adjusted estimate per hour, full
+  `components`/`confidence` breakdown (prompts/phase-2-exposure.md section 3).
+- `GET /conditions` -- **all beaches ranked for the same hour**, best first. This, not a
+  single beach's absolute height, is the primary product surface going forward: geometry
+  can defensibly say Herzliya beats Bat Yam under a given swell; it cannot defensibly say
+  Herzliya will be exactly 1.2m.
+- Every exposure-derived number carries `confidence.exposure: "unvalidated_heuristic"` and
+  a `wave_height_range` never narrower than the offshore forecast's own measured
+  uncertainty (~+/-0.25m, `docs/BIAS_ANALYSIS.md`) -- hard rule 1.
+
+- 33 tests, no live network (every upstream response mocked from a committed fixture; the
+  exposure tests run against the committed real coastline/structure geometry, not mocks).
 
 ## What is NOT built yet
 
-Beach exposure scoring, surf quality scoring, alerting/subscriptions, and any frontend.
-Every forecast response already carries a `method: "raw"` field so no future caller ever
-sees an unlabelled number once those layers exist.
+Surf quality scoring (wind, chop ratio), alerting/subscriptions, and any frontend. Every
+forecast response already carries a `method` field so no future caller ever sees an
+unlabelled number once those layers exist.
 
 ## Running it
 
@@ -72,6 +95,8 @@ serving. Ingestion fires on the schedule; nothing blocks startup waiting for it.
 curl http://localhost:8000/health
 curl http://localhost:8000/beaches
 curl "http://localhost:8000/beaches/herzliya/forecast?hours=24"
+curl "http://localhost:8000/beaches/herzliya/exposure?hours=24"
+curl "http://localhost:8000/conditions"      # all beaches ranked for the next hour
 ```
 
 Tests (needs Postgres + Redis reachable -- `docker compose up -d postgres redis` then run
@@ -90,5 +115,12 @@ docker compose run --rm api pytest -v
 - No ground truth exists at any actual Israeli beach. Everything from Phase 2 onward
   (exposure, quality scoring) is geometry and local knowledge, not measurement, and will be
   labelled as such in every API response, by design, permanently.
+- Two beaches' shoreline bearings (`netanya`, `ashdod`) were computed from a thin coastline
+  window and flagged in `data/beaches.yml` for manual review -- no visual map review was
+  performed in this session (no map-viewing tool was available). Their values were
+  cross-checked for consistency against neighbouring beaches instead; see
+  `docs/DECISIONS.md`.
+- Obstruction detection thresholds (range, lateral distance, strength) are judgement calls
+  with no ground truth to tune them against -- see `docs/DECISIONS.md`.
 - `issued_at` is the ingestion fetch time, not a real forecast-issue time -- neither
   upstream exposes one. See [`docs/DECISIONS.md`](docs/DECISIONS.md).

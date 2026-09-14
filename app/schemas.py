@@ -43,6 +43,34 @@ class ForecastOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ExposureComponents(BaseModel):
+    offshore_raw: float | None
+    exposure_factor: float
+    directional_factor: float
+    obstruction: float
+
+
+class ExposureConfidence(BaseModel):
+    offshore_raw: str = "measured_accurate"  # docs/BIAS_ANALYSIS.md -- MAE 0.091m in the surfable band
+    exposure: str = "unvalidated_heuristic"  # hard rule 1 -- no ground truth at any beach
+
+
+class ExposureEstimateOut(BaseModel):
+    """prompts/phase-2-exposure.md section 3. Every field here is required on any response
+    that applies exposure to a forecast -- see the honest-labelling requirement. The range
+    is never narrower than the measured offshore spread (docs/BIAS_ANALYSIS.md, ~+/-0.19-
+    0.25m 90% interval) -- exposure adds uncertainty, it never subtracts it."""
+
+    beach_id: str
+    valid_at: datetime
+    wave_height_estimate: float | None
+    wave_height_range: tuple[float, float] | None
+    method: str
+    components: ExposureComponents
+    confidence: ExposureConfidence
+    exposure_basis: str
+
+
 class MeasurementOut(BaseModel):
     buoy_id: str
     observed_at: datetime
