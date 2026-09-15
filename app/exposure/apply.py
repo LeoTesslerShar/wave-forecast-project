@@ -17,17 +17,21 @@ OFFSHORE_UNCERTAINTY_M = 0.25
 # wave height (Hs) -- the average of the highest third of waves, the oceanographic
 # convention docs/BIAS_ANALYSIS.md was validated against. Surf apps/surfers commonly
 # describe a session by face height instead -- closer to the biggest wave you'd actually
-# see in a set, not the statistical average -- which runs well above Hs. This project's own
-# Hadera buoy fixture reports both for the same moment (Significant 0.42m, Maximal 0.53m,
-# docs/DATA_SOURCES.md) but that is a single sample, not enough to fit a ratio from. Using
-# the standard Rayleigh-distributed-sea-state approximation instead: for N independent
-# waves, the expected largest is Hs * sqrt(0.5 * ln(N)); N=1000 (~a few hours at a typical
-# 8-10s period, i.e. "the biggest wave of the session") gives ~1.86, rounded down slightly
-# to the more commonly cited surf-forecasting rule of thumb. This is a judgement call with
-# no ground truth to tune it against, same caveat as OBSTRUCTION_LATERAL_THRESHOLD_M --
-# see docs/DECISIONS.md. Never used in scoring (app/quality/size.py bands stay on Hs) --
-# display only.
-FACE_HEIGHT_MULTIPLIER = 1.8
+# see in a set, not the statistical average -- which runs somewhat above Hs.
+#
+# This was originally set to 1.8 from the textbook Rayleigh-distributed-sea-state
+# approximation (Hs * sqrt(0.5 * ln(N)) for N=1000 waves, "the biggest wave of the
+# session," gives ~1.86). Revised down to 1.3 after a live comparison against another
+# surf app's numbers overshot badly (our ~0.9m against their ~0.5-0.6m face height for a
+# day whose raw Hs was ~0.42-0.46m -- the user confirmed the other app's figure was face
+# height, not Hs). 1.3 lines up with this project's own Hadera buoy fixture, which reports
+# BOTH quantities for the same moment (Significant 0.42m, Maximal 0.53m,
+# docs/DATA_SOURCES.md -- ratio 1.27) -- one real local data point, previously dismissed as
+# too sparse to use alone, now corroborated by an independent live comparison landing in
+# the same range. Still a judgement call with no proper ground truth to fit against, same
+# caveat as OBSTRUCTION_LATERAL_THRESHOLD_M -- see docs/DECISIONS.md. Never used in scoring
+# (app/quality/size.py bands stay on Hs) -- display only.
+FACE_HEIGHT_MULTIPLIER = 1.3
 
 
 def build_exposure_estimate(beach: Beach, forecast: Forecast) -> ExposureEstimateOut:

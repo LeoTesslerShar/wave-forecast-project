@@ -576,3 +576,36 @@ been seeded relative to its own local infrastructure.
 
 Regression test:
 `tests/test_exposure_obstruction.py::test_structure_near_the_beach_itself_is_excluded_entirely_not_just_near_samples`.
+
+## 2026-09-15 -- Face height multiplier was overshooting; revised 1.8 -> 1.3
+
+User report: today's headline size read ~0.9m across most beaches while "the actual
+forecast" showed 0.5-0.6m. Checked live: raw offshore Hs was ~0.42-0.46m across the coast
+-- close to the user's 0.5-0.6m reference already -- and the displayed ~0.9m was that Hs
+times `FACE_HEIGHT_MULTIPLIER` (1.8, set two entries above). Asked the user directly
+whether their 0.5-0.6m reference was itself a face-height figure or a raw/Hs figure, since
+the answer changes which side of this is wrong; confirmed it was face height, so the
+multiplier itself was overshooting, not a mismatched comparison.
+
+Revised 1.8 -> 1.3. The original 1.8 came from a textbook Rayleigh-sea-state
+approximation (N=1000 waves, no local grounding). This project already had one real local
+data point that pointed lower -- the Hadera buoy fixture's own Hs/Hmax pair (0.42m /
+0.53m, docs/DATA_SOURCES.md, ratio 1.27) -- but it was dismissed at the time as a single
+sample, not enough to fit a ratio from on its own. Today's live comparison against another
+app lands in the same range (a ratio around 1.15-1.3 given the day's raw Hs and the user's
+reported 0.5-0.6m), which promotes that single buoy sample from "too sparse to trust
+alone" to "independently corroborated" -- 1.3 was chosen to match it.
+
+Worth noting for anyone revisiting this: the FIRST face-height discussion (the one that
+introduced face height at all) compared an apparently much larger gap -- offshore_raw
+~0.7m against another app's ~1.3m, a ~1.9x ratio -- which is what originally motivated
+1.8. That comparison predates this session's obstruction-cliff bugfix
+(docs/DECISIONS.md, "Two real bugs found from one user report"), and the beach in that
+comparison (Herzliya) was very likely still under the binary 40% obstruction penalty at
+the time, which would have deflated whatever Hs-derived number the user was actually
+looking at and inflated the apparent Hs-to-face-height gap. That earlier ratio should be
+treated as unreliable, not as competing evidence against the 1.3 chosen here.
+
+Still an unvalidated, judgement-call conversion, same caveat as before -- just recalibrated
+against better (if still thin) evidence, and expected to keep moving if a clearer ground
+truth turns up.
