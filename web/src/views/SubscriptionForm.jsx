@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
+import { localHourLabel } from "../dateUtils.js";
+import { getUserId } from "../identity.js";
+import { Num } from "../labels.jsx";
 
 const OPERATING_POINTS = [
-  { value: "strict", label: "Strict", hint: "alert only at your exact bar" },
-  { value: "balanced", label: "Balanced (default)", hint: "leans slightly below your bar to catch borderline sessions" },
-  { value: "generous", label: "Generous", hint: "leans further below your bar -- catches more real sessions, more false alarms" },
+  { value: "strict", label: "מדויק", hint: "התראה רק בדיוק על הרף שקבעת" },
+  { value: "balanced", label: "מאוזן (ברירת מחדל)", hint: "נוטה קצת מתחת לרף כדי לתפוס גם גלישות גבוליות" },
+  { value: "generous", label: "נדיב", hint: "נוטה עוד יותר מתחת לרף -- תופס יותר גלישות אמיתיות, גם יותר התראות שווא" },
 ];
 
-/** Beach(es), threshold, time window, operating point -- prompts/phase-5-ui.md section 1.
- * Submits to the existing Phase 4 API; no new backend logic. */
+/** Standing recurring-criteria alerts (Beach + threshold + time window), alongside the
+ * per-slot watches created from BeachDay's "התרע לי" buttons -- two different tools: a
+ * standing rule vs. a one-off watch on a specific slot. */
 export default function SubscriptionForm() {
   const [beaches, setBeaches] = useState([]);
-  const [userId, setUserId] = useState("");
+  const [userId] = useState(getUserId());
   const [beachId, setBeachId] = useState("");
   const [minHeight, setMinHeight] = useState("1.0");
   const [maxHeight, setMaxHeight] = useState("");
@@ -21,23 +25,36 @@ export default function SubscriptionForm() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null); // { ok: bool, message: string }
   const [subscriptions, setSubscriptions] = useState(null);
+  const [slotWatches, setSlotWatches] = useState(null);
 
   useEffect(() => {
     api.listBeaches().then((list) => {
       setBeaches(list);
       if (list.length > 0) setBeachId(list[0].id);
     });
+    refreshSubscriptions();
+    refreshSlotWatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function refreshSubscriptions(uid) {
-    if (!uid) {
-      setSubscriptions(null);
-      return;
-    }
+  function beachName(id) {
+    return beaches.find((b) => b.id === id)?.name_he || id;
+  }
+
+  async function refreshSubscriptions() {
     try {
-      setSubscriptions(await api.listSubscriptions(uid));
+      setSubscriptions(await api.listSubscriptions(userId));
     } catch {
       setSubscriptions(null);
+    }
+  }
+
+  async function refreshSlotWatches() {
+    try {
+      const list = await api.listSlotWatches(userId);
+      setSlotWatches(list.filter((w) => w.status === "pending" || w.status === "alerted"));
+    } catch {
+      setSlotWatches(null);
     }
   }
 
@@ -56,8 +73,8 @@ export default function SubscriptionForm() {
         operating_point: operatingPoint,
       };
       const created = await api.createSubscription(body);
-      setResult({ ok: true, message: `Subscription #${created.id} created.` });
-      await refreshSubscriptions(userId);
+      setResult({ ok: true, message: `נוצר מנוי #${created.id}.` });
+      await refreshSubscriptions();
     } catch (err) {
       setResult({ ok: false, message: err.message });
     } finally {
@@ -67,32 +84,23 @@ export default function SubscriptionForm() {
 
   async function handleDeactivate(id) {
     await api.setSubscriptionActive(id, false);
-    await refreshSubscriptions(userId);
+    await refreshSubscriptions();
+  }
+
+  async function handleCancelWatch(id) {
+    await api.cancelSlotWatch(id);
+    await refreshSlotWatches();
   }
 
   return (
     <div className="subscription-view">
       <form className="subscription-form" onSubmit={handleSubmit}>
         <label>
-          Your identifier
-          <input
-            type="text"
-            required
-            placeholder="e.g. an email or any name"
-            value={userId}
-            onChange={(e) => {
-              setUserId(e.target.value);
-              refreshSubscriptions(e.target.value);
-            }}
-          />
-        </label>
-
-        <label>
-          Beach
+          חוף
           <select value={beachId} onChange={(e) => setBeachId(e.target.value)}>
             {beaches.map((b) => (
               <option key={b.id} value={b.id}>
-                {b.name}
+                {b.name_he || b.name}
               </option>
             ))}
           </select>
@@ -100,7 +108,7 @@ export default function SubscriptionForm() {
 
         <div className="form-row">
           <label>
-            Min height (m)
+            גובה מינימלי (מ')
             <input
               type="number"
               step="0.1"
@@ -111,7 +119,7 @@ export default function SubscriptionForm() {
             />
           </label>
           <label>
-            Max height (m, optional)
+            גובה מקסימלי (מ', לא חובה)
             <input
               type="number"
               step="0.1"
@@ -125,20 +133,18 @@ export default function SubscriptionForm() {
 
         <div className="form-row">
           <label>
-            Window start
+            תחילת חלון
             <input type="time" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} />
           </label>
           <label>
-            Window end
+            סוף חלון
             <input type="time" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} />
           </label>
         </div>
-        <p className="muted small">
-          A window that ends before it starts (e.g. 22:00-02:00) crosses midnight -- that's fine.
-        </p>
+        <p className="muted small">חלון שמסתיים לפני שהוא מתחיל (למשל 22:00-02:00) חוצה חצות -- זה תקין.</p>
 
         <fieldset>
-          <legend>Alert sensitivity</legend>
+          <legend>רגישות התראה</legend>
           {OPERATING_POINTS.map((op) => (
             <label key={op.value} className="radio-row">
               <input
@@ -152,34 +158,55 @@ export default function SubscriptionForm() {
             </label>
           ))}
           <p className="muted small">
-            The calibrated fallback never changes the displayed height -- it only widens which
-            forecasts trigger an alert, and the alert says so when it fires below your literal
-            bar (docs/BIAS_ANALYSIS.md).
+            ההגדרה המכוילת לעולם לא משנה את הגובה המוצג -- היא רק מרחיבה אילו תחזיות מפעילות
+            התראה, וההתראה עצמה מציינת כשזה קורה מתחת לרף המדויק שביקשת.
           </p>
         </fieldset>
 
-        <button type="submit" disabled={submitting || !userId || !beachId}>
-          {submitting ? "Creating..." : "Create subscription"}
+        <button type="submit" disabled={submitting || !beachId}>
+          {submitting ? "יוצר..." : "צור מנוי"}
         </button>
 
         {result && <p className={result.ok ? "success" : "error"}>{result.message}</p>}
       </form>
 
-      {subscriptions !== null && (
-        <div className="subscription-list">
-          <h3>Your subscriptions</h3>
-          {subscriptions.length === 0 && <p className="muted">None yet.</p>}
-          {subscriptions.map((s) => (
-            <div className="subscription-row" key={s.id}>
-              <span>
-                #{s.id} {s.beach_id} &ge;{s.min_height ?? "-"}m {s.time_window_start}-
-                {s.time_window_end} ({s.operating_point}) {s.active ? "" : "(inactive)"}
-              </span>
-              {s.active && <button onClick={() => handleDeactivate(s.id)}>Deactivate</button>}
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="subscription-lists">
+        {subscriptions !== null && (
+          <div className="subscription-list">
+            <h3>המנויים שלי</h3>
+            {subscriptions.length === 0 && <p className="muted">אין עדיין.</p>}
+            {subscriptions.map((s) => (
+              <div className="subscription-row" key={s.id}>
+                <span>
+                  #{s.id} {beachName(s.beach_id)} <Num>&ge;{s.min_height ?? "-"}מ'</Num>{" "}
+                  <Num>
+                    {s.time_window_start}-{s.time_window_end}
+                  </Num>{" "}
+                  ({OPERATING_POINTS.find((o) => o.value === s.operating_point)?.label || s.operating_point}){" "}
+                  {s.active ? "" : "(לא פעיל)"}
+                </span>
+                {s.active && <button onClick={() => handleDeactivate(s.id)}>בטל</button>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {slotWatches !== null && (
+          <div className="subscription-list">
+            <h3>מעקבים על שעה ספציפית</h3>
+            {slotWatches.length === 0 && <p className="muted">אין עדיין -- לוחצים "התרע לי" על שעה בעמוד היום.</p>}
+            {slotWatches.map((w) => (
+              <div className="subscription-row" key={w.id}>
+                <span>
+                  {beachName(w.beach_id)} <Num>{localHourLabel(w.valid_at)}</Num>{" "}
+                  {w.status === "alerted" ? "(הותרעת -- ממתין לשינוי)" : "(ממתין)"}
+                </span>
+                <button onClick={() => handleCancelWatch(w.id)}>בטל</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -896,3 +896,77 @@ Frontend RTL work (labels dictionary, logical CSS properties, bidi number isolat
 touch the same view files -- see the next entry.
 
 103 tests passing.
+
+## 2026-09-15 -- Frontend rebuilt: Surfline-style drill-down, Hebrew/RTL, web push client
+
+Completes the frontend half of the Hebrew/RTL + drill-down + per-slot-watch work (backend
+halves recorded in the three entries above). No router added -- `react-router-dom` would be
+a third runtime dependency for an app that deliberately has two, and the UI is explicitly
+"not the point of the project" (prompts/phase-5-ui.md). Navigation is hand-rolled in
+`App.jsx` as a small `{view, beachId, date}` state object instead.
+
+**Data flow.** `getBeachQuality(id, 168)` already returns a full 7 days; the old
+`RankedBeachList` fetched this per beach on every date change, and `SingleBeachBreakdown`
+re-fetched on every beach/date change too. `App.jsx` now fetches each beach's series ONCE
+per session (a `Set` of already-fetched beach ids) and passes it down as props -- the three
+new views (`BeachList` -> `BeachWeek` -> `BeachDay`) are pure client-side reductions of that
+one cached series, not separate fetches.
+
+**Views**, replacing `RankedBeachList.jsx` (deleted) and folding `SingleBeachBreakdown.jsx`
+(deleted) into a drill-down's last step:
+- `BeachList.jsx` -- compact one-line rows (name, score badge, surf height, wind), sorted
+  by the CURRENT hour's score (`nearestSlotTo`, new in `dateUtils.js`), not "best hour of
+  the day" as before. Materially shorter per beach than the old ~150px cards.
+- `BeachWeek.jsx` -- 7 daily rows for one beach (`nextLocalDates(7)`, new), each showing
+  `bestHourForDate` (already server-scored) and the day's surf-height range.
+- `BeachDay.jsx` -- 3-hour interval rows (`hoursAtIntervalForDate`, lifted out of the old
+  `SingleBeachBreakdown.jsx` where the same filter predicate was duplicated twice) showing
+  exactly wave height / wind speed / swell direction / score, per the user's ask. Tapping a
+  row expands it into the full component breakdown in place, rather than navigating to a
+  separate tab. Each row carries a watch toggle wired to the new `/slot-watches` endpoints.
+
+**The score is now actually visible.** `quality_score` was computed since Phase 3 but never
+rendered anywhere in the UI -- the new `ScoreBadge` (`Badges.jsx`) shows it everywhere a
+verdict is shown, coloured off the same ladder so the two never visually disagree.
+
+**Hebrew/RTL, frontend half** (backend prose translation recorded separately above):
+`index.html` sets `lang="he" dir="rtl"`; `labels.jsx` is the one place backend IDENTIFIERS
+(verdict/band/relation words, confidence strings) get mapped to Hebrew for display, with an
+unrecognised value falling back to itself rather than rendering blank. `index.css` audited
+for physical-direction properties that don't auto-mirror under `dir="rtl"` (flex/grid
+already do) -- `margin-left` -> `margin-inline-start` on `.badge`, `text-align: left` ->
+`text-align: start` plus the asymmetric `padding: 6px 10px 6px 0` -> logical
+`padding-inline: 0 10px` on `.breakdown-table th`. Numbers/units/times inside Hebrew text
+go through a new `<Num>` component (`unicode-bidi: isolate`, `dir="ltr"`) -- without it,
+mixed Hebrew+Latin-numeral strings are the single most common way an RTL UI visibly breaks.
+Beach names use `beach.name_he || beach.name` throughout, never a bare `name`.
+
+**Web push client stack, previously entirely absent** -- no service worker, no permission
+flow, no subscribe call existed anywhere under `web/`, so the "alert me" button the user
+asked for would have delivered nothing however correct the backend was. Added:
+`web/public/sw.js` (a `push`/`notificationclick` handler; `web/public/` did not exist
+before), registered eagerly but harmlessly from `main.jsx` (registering a service worker
+does not itself prompt for permission); `src/push.js::ensurePushRegistered()`, called
+LAZILY on the first watch tap (not on page load) so the permission prompt has context --
+requests `Notification.permission`, fetches the VAPID public key from the new
+`GET /push-config` (added alongside the `slot_watches` backend work, since the key
+previously never reached the browser at all), and registers the resulting
+`PushSubscription` with the existing `/push-subscriptions` endpoint. `src/identity.js`
+gives both the watch button and the standing-subscription form a stable
+`localStorage`-backed user id, replacing the free-text box with no persistence that existed
+before.
+
+**`SubscriptionForm.jsx`** kept as the standing-rules tab (Hebrew now), with a new second
+list showing active per-slot watches (created from `BeachDay`) alongside the recurring
+subscriptions -- two different tools surfaced in one place: a standing rule vs. a one-off
+watch on a specific slot.
+
+**Verification note:** confirmed via `docker compose up -d --build web`, a clean
+production `vite build` (which fails on unresolved imports/syntax errors -- none did), live
+API responses through the real endpoints (`name_he` present, `quality_score` on the new
+0..10 scale, `swell_direction_deg` populated), and a grep across the built JS bundle
+confirming no reference to the deleted view files survived. **Not click-tested in an actual
+browser** -- no browser automation tool was available in this environment; this is a real
+gap relative to this project's own stated practice of testing UI changes live before
+calling them done, and is worth a manual pass (especially the RTL number-isolation and the
+push permission flow, which cannot be meaningfully verified from the command line at all).

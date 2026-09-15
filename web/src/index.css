@@ -1,4 +1,9 @@
-/* Minimal styling -- prompts/phase-5-ui.md section 1: "React, minimal styling." */
+/* Minimal styling -- prompts/phase-5-ui.md section 1: "React, minimal styling."
+   Hebrew/RTL: the document sets dir="rtl" (index.html), which mirrors flex/grid direction
+   automatically -- most of this file needs no change for that. The exceptions are
+   properties that don't auto-mirror (margin-left, text-align: left, asymmetric padding
+   shorthand); those use LOGICAL properties (margin-inline-start, text-align: start,
+   padding-inline-start/-end) instead, flagged inline below. See docs/DECISIONS.md. */
 
 :root {
   color-scheme: light;
@@ -22,7 +27,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans Hebrew", "Arial Hebrew", Arial, sans-serif;
 }
 
 .app {
@@ -67,21 +72,6 @@ body {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
-.toolbar {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-  align-items: center;
-}
-
-.toolbar label {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  font-size: 0.9rem;
-}
-
 .muted {
   color: var(--muted);
 }
@@ -98,15 +88,24 @@ body {
   color: var(--measured);
 }
 
+.back-link {
+  display: inline-block;
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 4px 0;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
 .badge {
   display: inline-block;
   font-size: 0.7rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
   padding: 1px 6px;
   border-radius: 999px;
-  margin-left: 6px;
+  margin-inline-start: 6px; /* was margin-left -- must trail the value in both directions */
   vertical-align: middle;
 }
 
@@ -132,7 +131,6 @@ body {
   border-radius: 999px;
   font-weight: 600;
   font-size: 0.85rem;
-  text-transform: capitalize;
 }
 
 .verdict-flat { background: #e5e7eb; color: #374151; }
@@ -141,51 +139,158 @@ body {
 .verdict-good { background: #dbeafe; color: #1d4ed8; }
 .verdict-excellent { background: #dcfce7; color: #166534; }
 
-.beach-list {
-  display: grid;
-  gap: 12px;
-}
-
-.beach-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px 16px;
-}
-
-.beach-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.beach-card-header h3 {
-  margin: 0;
-}
-
-.beach-card-body {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 8px 16px;
+.score-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-weight: 700;
   font-size: 0.9rem;
 }
 
-.beach-card-body .label {
-  display: block;
-  color: var(--muted);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+.score-badge-max {
+  font-weight: 400;
+  font-size: 0.7rem;
+  opacity: 0.75;
 }
 
-.best-hour {
-  grid-column: 1 / -1;
-  color: var(--muted);
+/* Reuses the verdict colour classes above -- ScoreBadge is passed the same verdict word. */
+.score-badge.verdict-flat { background: #e5e7eb; color: #374151; }
+.score-badge.verdict-poor { background: #fee2e2; color: #b91c1c; }
+.score-badge.verdict-fair { background: #fef3c7; color: #92400e; }
+.score-badge.verdict-good { background: #dbeafe; color: #1d4ed8; }
+.score-badge.verdict-excellent { background: #dcfce7; color: #166534; }
+
+/* Compact beach list -- deliberately dense (Surfline-style rows), unlike the old ~150px
+   cards, so more beaches fit on screen and a favourite is reachable without scrolling. */
+.beach-list-compact {
+  display: grid;
+  gap: 6px;
+}
+
+.beach-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  text-align: start;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.beach-row:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.beach-row-name {
+  font-weight: 600;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.beach-row-size,
+.beach-row-wind {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+}
+
+.week-list,
+.day-list {
+  display: grid;
+  gap: 6px;
+}
+
+.week-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  text-align: start;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.week-row:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.week-row-date {
+  font-weight: 600;
+  flex: 1 1 auto;
+}
+
+.day-row-wrap {
+  display: grid;
+  gap: 0;
+}
+
+.day-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+  padding: 10px 14px;
+  cursor: pointer;
+  text-align: start;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.day-row-wrap:has(.day-row-detail) .day-row,
+.day-row-wrap:has(.watch-btn) .day-row {
+  border-radius: 8px 8px 0 0;
+}
+
+.day-row-time {
+  font-weight: 600;
+  flex: 0 0 4.5em;
+}
+
+.day-row-height,
+.day-row-wind,
+.day-row-swell {
+  flex: 1 1 auto;
+  font-size: 0.85rem;
+}
+
+.watch-btn {
+  display: block;
+  width: 100%;
+  border-radius: 0 0 8px 8px;
+  border: 1px solid var(--border);
+  border-top: none;
+  background: var(--card);
+  color: var(--accent);
   font-size: 0.8rem;
-  border-top: 1px dashed var(--border);
-  padding-top: 6px;
-  margin-top: 4px;
+  padding: 6px;
+}
+
+.watch-btn.watching {
+  color: var(--measured);
+  background: var(--measured-bg);
+}
+
+.day-row-detail {
+  border-radius: 0;
+  border-top: none;
+  margin-bottom: 6px;
+  max-width: none;
 }
 
 .breakdown-card {
@@ -194,23 +299,6 @@ body {
   border-radius: 10px;
   padding: 18px 20px;
   max-width: 560px;
-}
-
-.breakdown-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.breakdown-header h2 {
-  margin: 0;
-}
-
-.breakdown-verdict {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 10px 0 4px;
 }
 
 .reasoning {
@@ -225,10 +313,11 @@ body {
 }
 
 .breakdown-table th {
-  text-align: left;
+  text-align: start; /* was left */
   color: var(--muted);
   font-weight: 500;
-  padding: 6px 10px 6px 0;
+  padding-block: 6px;
+  padding-inline: 0 10px; /* was "6px 10px 6px 0" -- the gap must trail th, in either direction */
   vertical-align: top;
   width: 130px;
   font-size: 0.85rem;
@@ -309,6 +398,12 @@ button {
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.subscription-lists {
+  display: grid;
+  gap: 16px;
+  align-content: start;
 }
 
 .subscription-list {

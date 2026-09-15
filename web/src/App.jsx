@@ -1,41 +1,108 @@
-import { useState } from "react";
-import RankedBeachList from "./views/RankedBeachList.jsx";
-import SingleBeachBreakdown from "./views/SingleBeachBreakdown.jsx";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "./api.js";
+import BeachDay from "./views/BeachDay.jsx";
+import BeachList from "./views/BeachList.jsx";
+import BeachWeek from "./views/BeachWeek.jsx";
 import SubscriptionForm from "./views/SubscriptionForm.jsx";
 
 const TABS = [
-  { key: "ranked", label: "Beaches today", component: RankedBeachList },
-  { key: "breakdown", label: "Beach detail", component: SingleBeachBreakdown },
-  { key: "subscribe", label: "Alerts", component: SubscriptionForm },
+  { key: "beaches", label: "חופים" },
+  { key: "alerts", label: "התראות" },
 ];
 
 export default function App() {
-  const [tab, setTab] = useState("ranked");
-  const Active = TABS.find((t) => t.key === tab).component;
+  const [tab, setTab] = useState("beaches");
+  // { view: 'list' } | { view: 'week', beachId } | { view: 'day', beachId, date }
+  const [nav, setNav] = useState({ view: "list" });
+  const [beaches, setBeaches] = useState([]);
+  const [beachesError, setBeachesError] = useState(null);
+  const [qualityByBeach, setQualityByBeach] = useState({}); // beachId -> rows | 'loading' | Error
+  const fetchedRef = useRef(new Set());
+
+  useEffect(() => {
+    api
+      .listBeaches()
+      .then(setBeaches)
+      .catch((e) => setBeachesError(e.message));
+  }, []);
+
+  // Fetched once per beach per session, not on every navigation -- the previous per-view
+  // fetching pattern issued one 168h request per beach on every date change.
+  const ensureQuality = useCallback((beachId) => {
+    if (fetchedRef.current.has(beachId)) return;
+    fetchedRef.current.add(beachId);
+    setQualityByBeach((prev) => ({ ...prev, [beachId]: "loading" }));
+    api
+      .getBeachQuality(beachId, 168)
+      .then((rows) => setQualityByBeach((prev) => ({ ...prev, [beachId]: rows })))
+      .catch((e) => {
+        fetchedRef.current.delete(beachId);
+        setQualityByBeach((prev) => ({ ...prev, [beachId]: e }));
+      });
+  }, []);
+
+  useEffect(() => {
+    beaches.forEach((b) => ensureQuality(b.id));
+  }, [beaches, ensureQuality]);
+
+  function renderBeaches() {
+    if (nav.view === "week") {
+      const beach = beaches.find((b) => b.id === nav.beachId);
+      const rows = qualityByBeach[nav.beachId];
+      return (
+        <BeachWeek
+          beach={beach}
+          rows={Array.isArray(rows) ? rows : null}
+          onSelectDay={(date) => setNav({ view: "day", beachId: nav.beachId, date })}
+          onBack={() => setNav({ view: "list" })}
+        />
+      );
+    }
+    if (nav.view === "day") {
+      const beach = beaches.find((b) => b.id === nav.beachId);
+      const rows = qualityByBeach[nav.beachId];
+      return (
+        <BeachDay
+          beach={beach}
+          rows={Array.isArray(rows) ? rows : null}
+          date={nav.date}
+          onBack={() => setNav({ view: "week", beachId: nav.beachId })}
+        />
+      );
+    }
+    return (
+      <BeachList
+        beaches={beaches}
+        error={beachesError}
+        qualityByBeach={qualityByBeach}
+        onSelectBeach={(beachId) => setNav({ view: "week", beachId })}
+      />
+    );
+  }
 
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Surf Alert</h1>
+        <h1>התראות גלישה</h1>
         <p className="tagline">
-          Convenience and beach discrimination, not superior wave-height accuracy --
-          heuristic values are always marked "estimate."
+          נוחות והשוואה בין חופים -- לא דיוק גובה גל עדיף. ערכים משוערים תמיד מסומנים "הערכה".
         </p>
         <nav className="tabs">
           {TABS.map((t) => (
             <button
               key={t.key}
               className={t.key === tab ? "tab active" : "tab"}
-              onClick={() => setTab(t.key)}
+              onClick={() => {
+                setTab(t.key);
+                if (t.key === "beaches") setNav({ view: "list" });
+              }}
             >
               {t.label}
             </button>
           ))}
         </nav>
       </header>
-      <main>
-        <Active />
-      </main>
+      <main>{tab === "beaches" ? renderBeaches() : <SubscriptionForm />}</main>
     </div>
   );
 }

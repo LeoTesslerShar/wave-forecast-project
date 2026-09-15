@@ -43,6 +43,18 @@ export const api = {
     request(`/subscriptions/${id}?active=${active}`, { method: "PATCH" }),
 
   getSubscriptionStatus: (id) => request(`/subscriptions/${id}/status`),
+
+  getPushConfig: () => request("/push-config"),
+
+  registerPushSubscription: (body) =>
+    request("/push-subscriptions", { method: "POST", body: JSON.stringify(body) }),
+
+  createSlotWatch: (body) =>
+    request("/slot-watches", { method: "POST", body: JSON.stringify(body) }),
+
+  listSlotWatches: (userId) => request(`/slot-watches?user_id=${encodeURIComponent(userId)}`),
+
+  cancelSlotWatch: (id) => request(`/slot-watches/${id}`, { method: "DELETE" }),
 };
 
 export { BASE_URL };
