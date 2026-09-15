@@ -57,6 +57,8 @@ async def test_quality_response_has_every_component_and_verdict(db_session):
     assert row.chop_band in ("clean", "mixed", "choppy", "unknown")
     assert row.quality_verdict in ("flat", "poor", "fair", "good", "excellent")
     assert row.quality_reasoning
+    assert row.swell_direction_deg == 300.0
+    assert 0.0 <= row.quality_score <= 10.0  # scale, not the old 0..1
 
     # confidence markers throughout
     assert row.confidence.size == "unvalidated_heuristic"

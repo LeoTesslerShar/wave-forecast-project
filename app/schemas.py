@@ -116,9 +116,13 @@ class QualityOut(BaseModel):
     period_s: float | None
     period_band: str
     wind: QualityWindOut
+    # The direction the SWELL (not wind) is arriving from -- was only on ForecastOut before;
+    # added here so the day-by-day UI doesn't have to fetch and join two endpoints for one
+    # field (prompts/phase-5-ui.md section 3, "no client-side derivation of API data").
+    swell_direction_deg: float | None
     chop_ratio: float | None
     chop_band: str
-    quality_score: float
+    quality_score: float  # 0..10 -- see app/quality/verdict.py
     quality_verdict: str  # "flat" | "poor" | "fair" | "good" | "excellent"
     quality_reasoning: str
     confidence: QualityConfidence

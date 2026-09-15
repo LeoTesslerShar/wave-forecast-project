@@ -37,9 +37,14 @@ OFFSHORE_MIN_DIFF = 135.0
 @dataclass
 class WindQuality:
     relation_to_shore: str  # "onshore" | "cross-shore" | "offshore" | "glassy"
-    score: float            # 0..1, what the verdict combiner actually uses
+    score: float            # 0..1, what the verdict combiner weights at 0.4
     gusty: bool
     angular_difference_deg: float | None
+    # Carried through UNUSED by `score` above -- app/quality/verdict.py's WIND_CEILING needs
+    # the raw speed, because `score` is a pure direction cosine: a 60 km/h dead-offshore gale
+    # scores identically to a 9 km/h offshore breeze. Speed belongs in a ceiling applied to
+    # the whole combined score, not folded into this one component -- see that module.
+    speed_kmh: float | None
 
 
 def classify_wind(
@@ -49,7 +54,10 @@ def classify_wind(
     shoreline_bearing: float | None,
 ) -> WindQuality:
     if wind_speed_kmh is None or wind_direction_from is None:
-        return WindQuality(relation_to_shore="unknown", score=0.5, gusty=False, angular_difference_deg=None)
+        return WindQuality(
+            relation_to_shore="unknown", score=0.5, gusty=False,
+            angular_difference_deg=None, speed_kmh=wind_speed_kmh,
+        )
 
     gusty = wind_gusts_kmh is not None and (wind_gusts_kmh - wind_speed_kmh) >= GUST_SPREAD_KMH
 
@@ -57,11 +65,17 @@ def classify_wind(
         score = 0.95
         if gusty:
             score *= GUST_PENALTY
-        return WindQuality(relation_to_shore="glassy", score=round(score, 3), gusty=gusty, angular_difference_deg=None)
+        return WindQuality(
+            relation_to_shore="glassy", score=round(score, 3), gusty=gusty,
+            angular_difference_deg=None, speed_kmh=wind_speed_kmh,
+        )
 
     if shoreline_bearing is None:
         # No geometry to judge relation-to-shore against -- degrade to neutral, not a crash.
-        return WindQuality(relation_to_shore="unknown", score=0.5, gusty=gusty, angular_difference_deg=None)
+        return WindQuality(
+            relation_to_shore="unknown", score=0.5, gusty=gusty,
+            angular_difference_deg=None, speed_kmh=wind_speed_kmh,
+        )
 
     diff = angular_difference(wind_direction_from, shoreline_bearing)
     if diff <= ONSHORE_MAX_DIFF:
@@ -78,5 +92,6 @@ def classify_wind(
         score *= GUST_PENALTY
 
     return WindQuality(
-        relation_to_shore=relation, score=round(score, 3), gusty=gusty, angular_difference_deg=round(diff, 1)
+        relation_to_shore=relation, score=round(score, 3), gusty=gusty,
+        angular_difference_deg=round(diff, 1), speed_kmh=wind_speed_kmh,
     )

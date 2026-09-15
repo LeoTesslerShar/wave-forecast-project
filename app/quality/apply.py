@@ -34,7 +34,12 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
     )
     chop_q = classify_chop(forecast.swell_wave_height, forecast.wind_wave_height)
 
-    verdict = combine(size_q, period_q, wind_q, chop_q)
+    # classify_size (above) still receives Hs -- its bands are calibrated against
+    # docs/BIAS_ANALYSIS.md's Hs-based regimes and must not move. Only the CEILING in
+    # combine() looks at surf height -- the number actually shown to the user -- so a small
+    # displayed wave can never read as a top score no matter how clean everything else is,
+    # even though its underlying Hs might sit in a more generous band. See verdict.py.
+    verdict = combine(size_q, period_q, wind_q, chop_q, surf_height_m=exposure.surf_height_estimate)
 
     return QualityOut(
         beach_id=beach.id,
@@ -42,6 +47,7 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
         size=exposure,
         period_s=period_s,
         period_band=period_q.band,
+        swell_direction_deg=forecast.swell_wave_direction or forecast.wave_direction,
         wind=QualityWindOut(
             speed_kmh=forecast.wind_speed_10m,
             direction_deg=forecast.wind_direction_10m,

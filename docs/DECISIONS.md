@@ -732,3 +732,72 @@ structure (a breakwater, different from the pier, hit at swell 330-345) is unaff
 still blocks near-fully -- the fix is type-selective, not a blanket weakening.
 
 94 tests passing, including the updated/new obstruction tests.
+
+## 2026-09-15 -- Quality score rescaled to 0..10 and made conservative with hard ceilings
+
+User report: a small (~0.45m surf height) day across the whole coast was reading "excellent"
+in the app. Traced it to two real gaps in `app/quality/verdict.py`:
+
+1. **No size ceiling.** `quality_score` was a pure weighted sum (wind 0.4, size 0.25, chop
+   0.25, period 0.10) with no upper bound tied to how big the wave actually was. A 0.5m day
+   with clean wind/period/chop scored 0.9375 (old 0..1 scale) -> "excellent". Even 0.4m
+   scored 0.85 -> "excellent". In the user's own words: "there are no waves at 0.5."
+2. **Wind speed didn't affect the score at all above 8 km/h.** `classify_wind`'s score is a
+   pure cosine of wind DIRECTION relative to shore -- a 60 km/h dead-offshore gale scored
+   identically to a 9 km/h breeze. Speed only ever showed up as a binary "gusty" multiplier.
+
+**Fix: two hard ceilings on the numeric score, not just the verdict word.** The existing
+`_cap()` mechanism only ever clamped the WORD ("excellent" -> "fair"), never the number --
+but ranking, alert clustering (`app/alerting/matching.py`) and best-hour selection all sort
+on the raw `quality_score`, so a word-only cap would still let a flat day win a ranking or an
+alert. Both new ceilings (`SIZE_CEILING`, `WIND_CEILING` in `verdict.py`) clamp the number
+itself via `min()`, computed before the ladder, so the word follows correctly.
+
+- `SIZE_CEILING` is keyed on **surf height** (the displayed breaking-wave number,
+  `surf_height_estimate`), not on the offshore Hs `classify_size`'s own bands still use --
+  the bands stay Hs-based (tied to docs/BIAS_ANALYSIS.md's regimes), only the ceiling looks
+  at what the user actually sees. Table (surf height -> max score, 0..10 scale): <0.3m -> 0
+  (flat), 0.3-0.5 -> 2, 0.5-0.8 -> 4, 0.8-1.2 -> 7, 1.2-2.0 -> 10, >2.0 -> 8 (big enough to be
+  demanding/messy on this coast, not a clean 10).
+- `WIND_CEILING` is direction-aware: onshore/cross-shore wind caps hard as it strengthens
+  (12-20 km/h -> 6, 20-30 -> 4, >30 -> 2) since it blows straight into the wave face; offshore
+  wind is left alone until it gets strong enough to hold waves up too much (>35 km/h -> 6).
+  Gusty subtracts a further 2 points from whichever ceiling applied. `WindQuality` gained a
+  `speed_kmh` field (previously only direction reached the combiner) to make this possible.
+- Both tables are judgement calls with no ground truth to fit against, same caveat as every
+  other heuristic constant in this project -- user-approved starting points, not measured.
+
+**Scale changed 0..1 -> 0..10** in the same change, so the score is meant to be read, not
+just compared -- it was never surfaced in the UI before. `SCORE_THRESHOLDS` moved to
+(8.0 excellent / 6.0 good / 4.0 fair / 0.0 poor).
+
+**A real implementation bug found while testing against the acceptance suite**: the wind
+ceiling's speed buckets were initially written in the wrong order/direction (looked like
+"faster is worse" was applied backwards), caught by `test_full_day_hour_by_hour_wind_rotation`
+losing monotonicity as wind rotated onshore->offshore -- a 14 km/h cross-shore hour scored
+worse than a 22 km/h more-onshore hour, which is physically backwards. Fixed the table.
+
+**A legitimate consequence of strict ceilings, not a bug**: `test_high_chop_degrades_verdict_
+even_at_good_height` (an existing acceptance test) originally used a 1.3m Hs case where BOTH
+the clean and choppy scenarios' raw weighted scores exceeded the 0.8-1.2m surf-height
+ceiling bucket (7.0) and saturated to the identical clamped number -- erasing the numeric
+gap between them, though the verdict WORD still correctly degraded good->fair via the
+existing onshore/choppy `_cap`. Widened the test's size to 1.8m Hs, where the ceiling no
+longer binds, so the underlying chop-driven difference is visible again. This is an inherent
+tradeoff of coarse ceiling buckets: two different-quality days in the same size bucket can
+legitimately clamp to the same number even though their verdict words still differ.
+
+Also removed a special-cased "not enough size or too much wind to surf" message for when a
+ceiling clamps the score to exactly 0.0 (e.g. a gusty gale-force onshore blow) -- that is a
+different situation from the pre-existing `size.band == "flat"` early return (genuinely no
+wave at all) and was overriding real, useful reasoning ("onshore wind chopping up the face,
+gusty too...") with a generic sentence. `_score_to_ladder`'s own `(0.0, "poor")` threshold
+already handles a zero score correctly without the special case.
+
+Added `swell_direction_deg` to `QualityOut` (was previously only on `ForecastOut`) -- needed
+for the planned hourly UI, which must show swell direction without a second client-side
+fetch-and-join, per this project's "no client-side derivation of API data" rule.
+
+Verified live: today's ~0.43-0.46m surf heights across all 8 beaches now score exactly 2.0
+(capped by size, several further capped by wind) and read "poor" -- not "excellent". 97
+tests passing.
