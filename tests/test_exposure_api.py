@@ -48,32 +48,42 @@ async def test_beach_exposure_response_has_full_components_and_confidence(db_ses
     assert row.wave_height_range[1] - row.wave_height_range[0] >= 0.49  # >= 2x the 0.25m floor
     assert "bearing" in row.exposure_basis
 
-    # Face height (docs/DECISIONS.md) must be an exact, fixed multiple of the significant-
+    # Surf height (docs/DECISIONS.md) must be an exact, fixed multiple of the significant-
     # height estimate this function already computed -- never an independent computation
     # that could silently drift out of step with it.
-    from app.exposure.apply import FACE_HEIGHT_MULTIPLIER
+    from app.exposure.apply import SURF_HEIGHT_FACTOR
 
-    assert row.face_height_estimate == round(row.wave_height_estimate * FACE_HEIGHT_MULTIPLIER, 2)
-    assert row.face_height_range == (
-        round(row.wave_height_range[0] * FACE_HEIGHT_MULTIPLIER, 2),
-        round(row.wave_height_range[1] * FACE_HEIGHT_MULTIPLIER, 2),
+    assert row.surf_height_estimate == round(row.wave_height_estimate * SURF_HEIGHT_FACTOR, 2)
+    assert row.surf_height_range == (
+        round(row.wave_height_range[0] * SURF_HEIGHT_FACTOR, 2),
+        round(row.wave_height_range[1] * SURF_HEIGHT_FACTOR, 2),
     )
-    assert "unvalidated" in row.confidence.face_height
+    assert "unvalidated" in row.confidence.surf_height
 
 
-async def test_face_height_is_a_labelled_multiple_of_significant_height_not_a_new_measurement():
-    """Regression test for the face-height display fields (app/exposure/apply.py
-    FACE_HEIGHT_MULTIPLIER, docs/DECISIONS.md): it must be a fixed, documented multiple of
-    the already-computed significant-height estimate -- never an independent computation
-    that could silently drift out of step with it -- and its confidence must still read as
-    an estimate (contain "unvalidated"), same as every other heuristic field, since it is a
-    further unmeasured conversion, not a new measurement."""
-    from app.exposure.apply import FACE_HEIGHT_MULTIPLIER
+async def test_surf_height_is_a_labelled_multiple_of_significant_height_not_a_new_measurement():
+    """Regression test for the surf-height display fields (app/exposure/apply.py
+    SURF_HEIGHT_FACTOR, docs/DECISIONS.md): it must be a fixed, documented multiple of the
+    already-computed significant-height estimate -- never an independent computation that
+    could silently drift out of step with it -- and its confidence must still read as an
+    estimate (contain "unvalidated"), same as every other heuristic field, since it is a
+    further unmeasured conversion, not a new measurement.
 
-    assert FACE_HEIGHT_MULTIPLIER > 1.0  # face height must be larger, not smaller, than Hs
+    The factor is deliberately BELOW 1.0 and that is not a typo: Israel's short-period wind
+    sea breaks smaller than its deep-water Hs, unlike the 12-16s ground swell the familiar
+    "face height is 1.3x the swell" rule of thumb is written for. Importing that rule was
+    the bug behind two earlier wrong values (1.8, then 1.3), so this bound is asserted in
+    the direction the local reference data actually supports."""
+    from app.exposure.apply import SURF_HEIGHT_FACTOR
+
+    assert 0.5 < SURF_HEIGHT_FACTOR < 1.0, (
+        "calibrated against Israeli surf reports (GoSurf), which run below the deep-water "
+        "Hs on this coast -- a value >= 1.0 means the ground-swell rule of thumb has crept "
+        "back in"
+    )
 
     conf = ExposureConfidence()
-    assert "unvalidated" in conf.face_height
+    assert "unvalidated" in conf.surf_height
 
 
 async def test_ranked_conditions_orders_herzliya_above_bat_yam(db_session):

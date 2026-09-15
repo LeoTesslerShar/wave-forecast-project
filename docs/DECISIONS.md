@@ -609,3 +609,63 @@ treated as unreliable, not as competing evidence against the 1.3 chosen here.
 Still an unvalidated, judgement-call conversion, same caveat as before -- just recalibrated
 against better (if still thin) evidence, and expected to keep moving if a clearer ground
 truth turns up.
+
+## 2026-09-15 -- Face height was the wrong concept for this coast; checked against real apps
+
+User asked for the displayed wave size to be checked against the surf services people here
+actually use (4surfers, Surfline, GoSurf) rather than adjusted by feel again. Did that. The
+answer changed the model, not just the constant -- twice today this number had been tuned
+(1.8 -> 1.3) on the assumption that a surf-facing height must be LARGER than the deep-water
+significant height. That assumption was wrong for Israel.
+
+**What the sources actually say.** Surfline's own published guidance gives the familiar
+rule: surf face height runs about **1.3x the deep-water swell height** -- but states it for
+**12-16 second ground swell**, where long-period energy shoals up hard onto the bank. That
+qualifier is the whole story. Israel's Mediterranean is a short-fetch **wind sea**: our own
+peak periods this week run 4.8-7.0s, nowhere near that regime. Short-period waves shoal far
+less, and a large share of the offshore Hs in a wind sea is steep, disorganised chop that
+never forms a rideable face at all.
+
+**What the local services show.** GoSurf (gosurf.co.il, Israeli, surfer-facing) published a
+7-day Tel Aviv outlook. Compared against our own offshore Hs for the same days:
+
+| Day | GoSurf mid | our Hs mid | ratio |
+|---|---|---|---|
+| 09-15 | 0.40 m | 0.57 m | 0.70 |
+| 09-16 | 0.47 | 0.57 | 0.83 |
+| 09-17 | 0.40 | 0.35 | 1.14 |
+| 09-18 | 0.30 | 0.47 | 0.64 |
+| 09-19 | 0.70 | 0.82 | 0.85 |
+| 09-20 | 0.55 | 0.61 | 0.90 |
+| 09-21 | 0.30 | 0.50 | 0.60 |
+
+Median 0.83, mean 0.81 -- **below 1.0, not above it.** The old 1.3 was overshooting the
+local convention by about 1.6x, which is exactly the "way over the actual forecast"
+the user had been reporting.
+
+Cross-checked to rule out plain model disagreement: surf-forecast.com's Tel Aviv figure for
+the calibration day (0.5-0.6 m at 6s) tracks our raw Hs (0.52-0.62 m) closely, while
+GoSurf's same-day figure is 0.3-0.5 m. Two references agreeing on the deep-water number
+while the surfer-facing one sits below it pins the gap on the REPORTING CONVENTION, not on
+whose wave model is right. (4surfers and Surfline both return HTTP 403 to automated
+fetches, so they could not be sampled directly; Surfline contributed its documented
+convention, quoted above, rather than live numbers.)
+
+**Changed:** `FACE_HEIGHT_MULTIPLIER = 1.3` -> `SURF_HEIGHT_FACTOR = 0.8`, and the fields
+renamed `face_height_estimate/_range` -> `surf_height_estimate/_range` across the schema,
+API, UI and tests. The rename is not cosmetic: a field called "face height" holding a value
+BELOW the significant wave height would be a plainly false label, which hard rule 1 forbids
+-- what the number now represents is the local surf-report convention (the waves breaking
+at the beach), which on this coast is smaller than the deep-water Hs. The UI label follows
+("Size (surf height)"), and `confidence.surf_height` still contains "unvalidated" so the
+frontend keeps badging it an estimate.
+
+After the change our Tel Aviv range overlaps GoSurf's published range on **every one of the
+seven forecast days**. Hs itself is untouched everywhere it is load-bearing
+(app/quality/size.py bands, docs/BIAS_ANALYSIS.md's accuracy claims).
+
+**Still open, deliberately.** 0.8 is an empirical fit to ONE local service over ONE week,
+not a measurement, and the per-day scatter is wide (0.60-1.14). The physically right answer
+is a period-dependent conversion -- the ratio should climb toward the textbook 1.3 if this
+coast ever gets a genuine long-period ground swell, and today's data is all 5-7s so it
+cannot constrain that end at all. Worth revisiting with a winter storm in the sample.

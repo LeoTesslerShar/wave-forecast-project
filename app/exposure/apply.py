@@ -13,25 +13,35 @@ from app.schemas import ExposureComponents, ExposureConfidence, ExposureEstimate
 # own measured uncertainty.
 OFFSHORE_UNCERTAINTY_M = 0.25
 
-# Open-Meteo's wave_height (and everything this module derives from it) is significant
-# wave height (Hs) -- the average of the highest third of waves, the oceanographic
-# convention docs/BIAS_ANALYSIS.md was validated against. Surf apps/surfers commonly
-# describe a session by face height instead -- closer to the biggest wave you'd actually
-# see in a set, not the statistical average -- which runs somewhat above Hs.
+# Open-Meteo's wave_height (and everything this module derives from it) is significant wave
+# height (Hs) -- the average of the highest third of waves, measured in deep water, the
+# oceanographic convention docs/BIAS_ANALYSIS.md was validated against. What Israeli surf
+# reports quote is a different thing: the height of the waves actually breaking at the
+# beach. This factor converts between them, for DISPLAY ONLY (app/quality/size.py's bands
+# stay on Hs).
 #
-# This was originally set to 1.8 from the textbook Rayleigh-distributed-sea-state
-# approximation (Hs * sqrt(0.5 * ln(N)) for N=1000 waves, "the biggest wave of the
-# session," gives ~1.86). Revised down to 1.3 after a live comparison against another
-# surf app's numbers overshot badly (our ~0.9m against their ~0.5-0.6m face height for a
-# day whose raw Hs was ~0.42-0.46m -- the user confirmed the other app's figure was face
-# height, not Hs). 1.3 lines up with this project's own Hadera buoy fixture, which reports
-# BOTH quantities for the same moment (Significant 0.42m, Maximal 0.53m,
-# docs/DATA_SOURCES.md -- ratio 1.27) -- one real local data point, previously dismissed as
-# too sparse to use alone, now corroborated by an independent live comparison landing in
-# the same range. Still a judgement call with no proper ground truth to fit against, same
-# caveat as OBSTRUCTION_LATERAL_THRESHOLD_M -- see docs/DECISIONS.md. Never used in scoring
-# (app/quality/size.py bands stay on Hs) -- display only.
-FACE_HEIGHT_MULTIPLIER = 1.3
+# It is BELOW 1.0, which is the opposite of the textbook surf-forecasting rule of thumb, and
+# that is deliberate. The familiar "face height is ~1.3x the deep-water swell" figure
+# (Surfline's own published guidance) is stated explicitly for 12-16 SECOND GROUND SWELL,
+# where long-period energy shoals up hard as it reaches the bank. Israel's Mediterranean is
+# a short-fetch WIND SEA -- our own peak periods run 5-7s. Short-period waves shoal far less,
+# and much of the offshore Hs in a wind sea is steep, disorganised chop that never forms a
+# rideable face at all, so the local reports land BELOW the deep-water Hs rather than above
+# it. Importing the ground-swell rule of thumb to this coast was the mistake behind two
+# earlier wrong values here (1.8, then 1.3 -- see docs/DECISIONS.md).
+#
+# 0.8 is calibrated against GoSurf (gosurf.co.il), an Israeli surfer-facing forecast, over
+# its published 7-day Tel Aviv outlook compared hour-for-hour against our own offshore Hs
+# for the same days: ratios 0.60, 0.64, 0.70, 0.83, 0.85, 0.90, 1.14 -- median 0.83, mean
+# 0.81. Cross-checked against surf-forecast.com, whose Tel Aviv "wave height" (0.5-0.6m at
+# 6s for the calibration day) tracks our raw Hs closely rather than GoSurf's 0.3-0.5m,
+# which is what pins the gap on the reporting convention rather than on model disagreement.
+#
+# Still an empirical calibration against one local service, not a measurement: the scatter
+# above (0.60-1.14) is wide, and a genuinely period-dependent conversion would be better
+# than any single constant if this coast ever gets a real ground-swell day. Same
+# judgement-call caveat as OBSTRUCTION_LATERAL_THRESHOLD_M.
+SURF_HEIGHT_FACTOR = 0.8
 
 
 def build_exposure_estimate(beach: Beach, forecast: Forecast) -> ExposureEstimateOut:
@@ -46,8 +56,8 @@ def build_exposure_estimate(beach: Beach, forecast: Forecast) -> ExposureEstimat
             valid_at=forecast.valid_at,
             wave_height_estimate=None,
             wave_height_range=None,
-            face_height_estimate=None,
-            face_height_range=None,
+            surf_height_estimate=None,
+            surf_height_range=None,
             method="raw_offshore_unavailable",
             components=ExposureComponents(
                 offshore_raw=None, exposure_factor=0.0, directional_factor=0.0, obstruction=0.0
@@ -62,9 +72,9 @@ def build_exposure_estimate(beach: Beach, forecast: Forecast) -> ExposureEstimat
     lo = round(max(0.0, estimate - OFFSHORE_UNCERTAINTY_M), 2)
     hi = round(estimate + OFFSHORE_UNCERTAINTY_M, 2)
 
-    face_estimate = round(estimate * FACE_HEIGHT_MULTIPLIER, 2)
-    face_lo = round(max(0.0, lo * FACE_HEIGHT_MULTIPLIER), 2)
-    face_hi = round(hi * FACE_HEIGHT_MULTIPLIER, 2)
+    surf_estimate = round(estimate * SURF_HEIGHT_FACTOR, 2)
+    surf_lo = round(max(0.0, lo * SURF_HEIGHT_FACTOR), 2)
+    surf_hi = round(hi * SURF_HEIGHT_FACTOR, 2)
 
     bearing_str = (
         f"{beach.shoreline_bearing:.0f}deg" if beach.shoreline_bearing is not None else "unknown"
@@ -82,8 +92,8 @@ def build_exposure_estimate(beach: Beach, forecast: Forecast) -> ExposureEstimat
         valid_at=forecast.valid_at,
         wave_height_estimate=estimate,
         wave_height_range=(lo, hi),
-        face_height_estimate=face_estimate,
-        face_height_range=(face_lo, face_hi),
+        surf_height_estimate=surf_estimate,
+        surf_height_range=(surf_lo, surf_hi),
         method="raw_offshore+heuristic_exposure" if beach.shoreline_bearing is not None else result.method,
         components=ExposureComponents(
             offshore_raw=offshore_raw,

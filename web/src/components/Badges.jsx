@@ -43,19 +43,19 @@ export function RangedValue({ estimate, range, unit = "m", confidence }) {
   );
 }
 
-/** Size, specifically: shows face height as the headline number (closer to what other
- * surf apps show and what a surfer would call it), with the significant-height offshore
- * figure kept visible underneath, labelled -- face height is a derived conversion
- * (app/exposure/apply.py FACE_HEIGHT_MULTIPLIER, docs/DECISIONS.md), never the number
+/** Size, specifically: shows surf height as the headline number (what Israeli surf reports
+ * quote -- the waves breaking at the beach), with the significant-height offshore figure
+ * kept visible underneath, labelled -- surf height is a derived conversion
+ * (app/exposure/apply.py SURF_HEIGHT_FACTOR, docs/DECISIONS.md), never the number
  * app/quality/size.py's bands or docs/BIAS_ANALYSIS.md's accuracy claims are based on. */
 export function SizeValue({ size }) {
-  if (size?.face_height_estimate == null) return <span className="muted">no data</span>;
+  if (size?.surf_height_estimate == null) return <span className="muted">no data</span>;
   return (
     <span className="ranged-value">
       <RangedValue
-        estimate={size.face_height_estimate}
-        range={size.face_height_range}
-        confidence={size.confidence.face_height}
+        estimate={size.surf_height_estimate}
+        range={size.surf_height_range}
+        confidence={size.confidence.surf_height}
       />
       <span className="muted" style={{ display: "block", fontSize: "0.85em" }}>
         Hs (offshore model): {size.wave_height_estimate?.toFixed(2)}m

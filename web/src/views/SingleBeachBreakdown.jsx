@@ -98,12 +98,12 @@ export default function SingleBeachBreakdown() {
           <table className="breakdown-table">
             <tbody>
               <tr>
-                <th>Size (face height)</th>
+                <th>Size (surf height)</th>
                 <td>
                   <RangedValue
-                    estimate={selected.size.face_height_estimate}
-                    range={selected.size.face_height_range}
-                    confidence={selected.size.confidence.face_height}
+                    estimate={selected.size.surf_height_estimate}
+                    range={selected.size.surf_height_range}
+                    confidence={selected.size.confidence.surf_height}
                   />
                 </td>
               </tr>
