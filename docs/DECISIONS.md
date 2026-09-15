@@ -847,3 +847,52 @@ something the frontend should hardcode a translation map for.
 6 new tests in `tests/test_slot_watch.py` cover the full state machine against a real
 Postgres session (idempotent create, outside-window inaction, below-bar silence,
 qualify-fires-once, fall-back-sends-one-cancellation, expiry). 103 tests passing.
+
+## 2026-09-15 -- Hebrew/RTL: the prose/identifier boundary
+
+User request: the UI should be Hebrew, RTL. Single language, no toggle, no i18n framework --
+the app has exactly two runtime dependencies and one user, so a translation library would be
+overhead with no payoff.
+
+**The boundary that matters: user-facing PROSE is translated; internal IDENTIFIERS are not.**
+`quality_verdict` ("flat"/"poor"/"fair"/"good"/"excellent"), `period_band`, `chop_band`,
+`relation_to_shore`, every `confidence` string, and all API field names stay exactly as they
+are -- tests assert on these values directly (e.g.
+`tests/test_quality_api.py::test_no_quality_confidence_ever_marks_verdict_as_validated`
+greps the whole `app/` tree for a literal `"unvalidated_heuristic"`), and other backend code
+branches on them (`app/quality/verdict.py`'s own `_cap()` compares `chop.band == "choppy"`).
+Translating an identifier would either break that logic or force every comparison through a
+translation table, for no benefit -- these values are never shown to a user directly, only
+looked up through a label map on the frontend.
+
+**What WAS translated, at the point it is generated, because it IS what the user reads:**
+`app/quality/verdict.py::_build_reasoning` (the `quality_reasoning` sentence -- e.g. "רוח
+חופית מקלקלת את פני הגל, גלישה מעורבת, מחזור חלש, גודל בינוני (מוגבל בגלל גודל קטן מדי)"),
+`app/alerting/notification.py::build_payload`'s title/`calibration_note`/`honesty_marker`,
+`app/alerting/runner.py`'s inline cancellation payload, and
+`app/alerting/slot_watch.py::_build_payload`'s title/`honesty_marker` -- all four are text
+that either renders directly in the UI or lands in a push notification, so leaving them
+English would mean an otherwise-Hebrew app suddenly switching languages mid-sentence.
+
+**One deliberate exception, left English on purpose:**
+`app/alerting/calibration.py::describe_operating_point`'s `description` field. It is
+embedded inside `calibration_note` rather than being the primary sentence, and its own test
+(`tests/test_alerting_calibration.py`) checks for a literal `"docs/BIAS_ANALYSIS.md"`
+substring -- a doc path that has no Hebrew form. Translating the wrapper sentence around it
+while leaving this one technical explanation in English was judged an acceptable seam,
+since it is the least user-facing piece of the four files above.
+
+Fixing the reasoning translation broke reasoning-substring test assertions that had been
+checking for the literal English words "onshore"/"offshore"/"clean"/"chop" -- updated
+`tests/test_quality.py` to check for the Hebrew band words instead (e.g. "חופית",
+"אופשור", "נקייה", "סחופה"), same intent, now matching what the function actually returns.
+
+Also added `Beach.name_he` usage throughout the payload builders above (`beach.name_he or
+beach.name`, never a bare `beach.name`) so a beach without a Hebrew name yet still produces
+a readable notification rather than a blank.
+
+Frontend RTL work (labels dictionary, logical CSS properties, bidi number isolation,
+`<html lang="he" dir="rtl">`) lands together with the drill-down UI rebuild, since both
+touch the same view files -- see the next entry.
+
+103 tests passing.

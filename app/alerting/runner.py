@@ -135,7 +135,7 @@ async def evaluate_subscription_for_date(
         payload = build_payload(beach, sub, cluster, kind, operating_effect)
     else:
         payload = {
-            "title": f"{beach.name}: window no longer qualifies",
+            "title": f"{beach.name_he or beach.name}: החלון כבר לא מתאים",
             "beach_id": beach.id,
             "kind": "cancellation",
             "window_start": snapshot_to_store.window_start.isoformat(),

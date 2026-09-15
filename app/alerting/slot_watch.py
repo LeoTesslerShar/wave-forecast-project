@@ -49,15 +49,18 @@ def _snapshot(quality) -> dict:
 
 
 def _build_payload(beach: Beach, watch: SlotWatch, quality, *, kind: str) -> dict:
+    """Titles/honesty_marker are Hebrew -- this is push-notification text the user reads
+    directly (docs/DECISIONS.md, the Hebrew/RTL entry)."""
     slot_label = local_hour_label(watch.valid_at)
+    beach_name = beach.name_he or beach.name
     title = {
-        "alert": f"{beach.name}: {slot_label} looks on",
-        "cancellation": f"{beach.name}: {slot_label} dropped off",
+        "alert": f"{beach_name}: {slot_label} נראה טוב",
+        "cancellation": f"{beach_name}: {slot_label} כבר לא רלוונטי",
     }[kind]
     return {
         "title": title,
         "beach_id": beach.id,
-        "beach_name": beach.name,
+        "beach_name": beach_name,
         "kind": kind,
         "valid_at": watch.valid_at.isoformat(),
         "quality_score": quality.quality_score,
@@ -71,7 +74,7 @@ def _build_payload(beach: Beach, watch: SlotWatch, quality, *, kind: str) -> dic
         "wind": quality.wind.model_dump(),
         "swell_direction_deg": quality.swell_direction_deg,
         "qualify_score": QUALIFY_SCORE,
-        "honesty_marker": "beach-level size and quality verdict are unvalidated heuristics -- see confidence fields",
+        "honesty_marker": "הערכת הגודל והציון ברמת החוף הן הערכות לא מאומתות -- ראו שדות confidence",
     }
 
 

@@ -2,6 +2,12 @@
 same honesty markers the API does (hard rule 1): a range, not a bare decimal; the quality
 components; and, when the calibrated threshold is what actually fired, says so explicitly
 rather than implying the user's literal bar was met.
+
+User-facing strings (title, calibration_note) are Hebrew -- this is what actually lands in
+a push notification (docs/DECISIONS.md, the Hebrew/RTL entry). `operating_effect.
+description` (app/alerting/calibration.py) stays English by contrast: it is a more
+technical explanation carrying a literal "docs/BIAS_ANALYSIS.md" reference its own tests
+check for verbatim, and is embedded rather than the primary sentence the user reads.
 """
 from app.alerting.calibration import OperatingPointEffect
 from app.alerting.matching import Cluster
@@ -17,11 +23,12 @@ def build_payload(
 ) -> dict:
     best_hour = max(cluster.hours, key=lambda h: h.hour.quality_score).hour
     heights = [h.hour.size.wave_height_estimate for h in cluster.hours if h.hour.size.wave_height_estimate is not None]
+    beach_name = beach.name_he or beach.name
 
     title = {
-        "alert": f"{beach.name}: session window open",
-        "update": f"{beach.name}: window updated",
-        "cancellation": f"{beach.name}: window no longer qualifies",
+        "alert": f"{beach_name}: נפתח חלון גלישה",
+        "update": f"{beach_name}: החלון עודכן",
+        "cancellation": f"{beach_name}: החלון כבר לא מתאים",
     }[kind]
 
     calibration_note = None
@@ -32,15 +39,15 @@ def build_payload(
         and min(heights, default=0) < subscription.min_height
     ):
         calibration_note = (
-            f"you asked for >={subscription.min_height:.2f}m; the lowest hour in this window is "
-            f"{min(heights):.2f}m, alerted under the '{subscription.operating_point}' setting because "
+            f"ביקשת מעל {subscription.min_height:.2f} מ'; השעה הנמוכה ביותר בחלון הזה היא "
+            f"{min(heights):.2f} מ', הותרעת בזכות הגדרת '{subscription.operating_point}' כי "
             f"{operating_effect.description}"
         )
 
     return {
         "title": title,
         "beach_id": beach.id,
-        "beach_name": beach.name,
+        "beach_name": beach_name,
         "kind": kind,
         "window_start": cluster.start.isoformat(),
         "window_end": cluster.end.isoformat(),
@@ -61,5 +68,5 @@ def build_payload(
         },
         "operating_point": subscription.operating_point,
         "calibration_note": calibration_note,
-        "honesty_marker": "beach-level size and quality verdict are unvalidated heuristics -- see confidence fields",
+        "honesty_marker": "הערכת הגודל והציון ברמת החוף הן הערכות לא מאומתות -- ראו שדות confidence",
     }

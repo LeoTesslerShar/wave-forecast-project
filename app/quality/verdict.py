@@ -125,7 +125,7 @@ def combine(
     surf_height_m: float | None = None,
 ) -> Verdict:
     if size.band == "flat":
-        return Verdict(quality_score=0.0, verdict="flat", reasoning="not enough size to surf")
+        return Verdict(quality_score=0.0, verdict="flat", reasoning="אין מספיק גובה לגלוש")
 
     weighted = (
         wind.score * WIND_WEIGHT
@@ -139,9 +139,9 @@ def combine(
     wind_ceiling = _wind_ceiling(wind)
     ceiling_reasons = []
     if size_ceiling < quality_score:
-        ceiling_reasons.append("small size")
+        ceiling_reasons.append("גודל קטן מדי")
     if wind_ceiling < quality_score:
-        ceiling_reasons.append("strong wind")
+        ceiling_reasons.append("רוח חזקה מדי")
     # A ceiling clamp can legitimately drive this to 0.0 (e.g. a gusty gale-force onshore
     # blow) -- that is NOT the same case as the size.band == "flat" early return above, and
     # must not short-circuit to a generic message: _score_to_ladder's own (0.0, "poor")
@@ -155,39 +155,48 @@ def combine(
     if wind.relation_to_shore == "onshore":
         new_verdict = _cap(verdict, "fair")
         if new_verdict != verdict:
-            capped_by.append("onshore wind")
+            capped_by.append("רוח חופית")
         verdict = new_verdict
     if chop.band == "choppy":
         new_verdict = _cap(verdict, "fair")
         if new_verdict != verdict:
-            capped_by.append("wind-chop")
+            capped_by.append("גלישה סחופה")
         verdict = new_verdict
 
     reasoning = _build_reasoning(size, period, wind, chop, capped_by)
     return Verdict(quality_score=quality_score, verdict=verdict, reasoning=reasoning)
 
 
+_CHOP_HE = {"clean": "נקייה", "mixed": "מעורבת", "choppy": "סחופה"}
+_PERIOD_HE = {"weak": "חלש", "workable": "סביר", "good": "טוב"}
+_SIZE_HE = {"flat": "שטוח", "small": "קטן", "rideable": "בינוני", "good": "טוב", "big": "גדול"}
+
+
 def _build_reasoning(
     size: SizeQuality, period: PeriodQuality, wind: WindQuality, chop: ChopQuality, capped_by: list[str]
 ) -> str:
+    """Generated in Hebrew -- this sentence is read directly by the user (in the UI and in
+    push notifications), unlike the band/verdict IDENTIFIERS it's built from (size.band,
+    chop.band, wind.relation_to_shore etc.), which stay English because tests and other
+    code depend on their exact values. See docs/DECISIONS.md, the Hebrew/RTL entry."""
     parts = []
 
     if wind.relation_to_shore == "glassy":
-        parts.append("glassy" + (" but gusty" if wind.gusty else ""))
+        parts.append("חלק" + (" אך סוער" if wind.gusty else ""))
     elif wind.relation_to_shore == "offshore":
-        parts.append("clean offshore wind" + (", though gusty" if wind.gusty else ""))
+        parts.append("רוח אופשור נקייה" + (", אך סוער" if wind.gusty else ""))
     elif wind.relation_to_shore == "onshore":
-        parts.append("onshore wind chopping up the face" + (", gusty too" if wind.gusty else ""))
+        parts.append("רוח חופית מקלקלת את פני הגל" + (", וגם סוער" if wind.gusty else ""))
     elif wind.relation_to_shore == "cross-shore":
-        parts.append("cross-shore wind" + (", gusty" if wind.gusty else ""))
+        parts.append("רוח צידית" + (", סוער" if wind.gusty else ""))
     else:
-        parts.append("wind direction unavailable")
+        parts.append("כיוון רוח לא ידוע")
 
-    parts.append(f"{chop.band} chop" if chop.band != "unknown" else "chop ratio unavailable")
-    parts.append(f"{period.band} period" if period.band != "unknown" else "period unavailable")
-    parts.append(f"{size.band} size")
+    parts.append(f"גלישה {_CHOP_HE[chop.band]}" if chop.band in _CHOP_HE else "יחס גלישה לא ידוע")
+    parts.append(f"מחזור {_PERIOD_HE[period.band]}" if period.band in _PERIOD_HE else "מחזור לא ידוע")
+    parts.append(f"גודל {_SIZE_HE.get(size.band, size.band)}")
 
     reasoning = ", ".join(parts)
     if capped_by:
-        reasoning += f" (capped by {' and '.join(capped_by)})"
+        reasoning += f" (מוגבל בגלל {' ו-'.join(capped_by)})"
     return reasoning

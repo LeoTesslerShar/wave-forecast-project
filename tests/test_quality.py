@@ -38,8 +38,8 @@ def test_storm_peak_scores_worse_than_following_dawn():
     assert dawn.quality_score > storm.quality_score
     assert ["flat", "poor", "fair", "good", "excellent"].index(dawn.verdict) > \
            ["flat", "poor", "fair", "good", "excellent"].index(storm.verdict)
-    assert "onshore" in storm.reasoning
-    assert "offshore" in dawn.reasoning
+    assert "חופית" in storm.reasoning  # "onshore" (reasoning is Hebrew -- docs/DECISIONS.md)
+    assert "אופשור" in dawn.reasoning  # "offshore"
 
 
 def test_full_day_hour_by_hour_wind_rotation():
@@ -87,8 +87,8 @@ def test_high_chop_degrades_verdict_even_at_good_height():
     )
 
     assert clean.quality_score > choppy.quality_score
-    assert "clean" in clean.reasoning
-    assert "chop" in choppy.reasoning
+    assert "נקייה" in clean.reasoning  # "clean" chop band word
+    assert "סחופה" in choppy.reasoning  # "choppy" chop band word
 
 
 def test_flat_size_overrides_everything():
