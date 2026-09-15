@@ -525,3 +525,54 @@ period now come from two different models describing the same sea, which is an a
 tradeoff against inventing an unvalidated Tm->Tp conversion factor where real Tp data
 exists instead. Regression test:
 `tests/test_quality_api.py::test_peak_period_preferred_over_mean_period_when_available`.
+
+## 2026-09-15 -- Obstruction floor only protected the beach's own coordinate, not the structure
+
+User report: Herzliya 0.9m vs Tel Aviv (Hilton) 0.59m for the same day, both with nearly
+identical raw offshore forecasts (~0.46m) and shoreline orientation -- too large a gap for
+Israel's short, fairly uniform coastline, and worth checking rather than assuming it was
+correct. Pulled the component breakdown: Tel Aviv (Hilton) carried a 25% obstruction
+penalty, Herzliya none, and that alone accounted for essentially the whole gap.
+
+Traced it to `OBSTRUCTION_MIN_CHECK_DISTANCE_M`'s exclusion logic. That constant exists
+specifically to stop a structure right next to a beach's own coordinate (a marina wall, an
+entrance jetty) from being mistaken for an offshore shadow-caster -- but the implementation
+only skipped ray SAMPLES within that distance of the beach, not the structure that caused
+the problem. Tel Aviv Hilton's beach coordinate sits ~13m from a real breakwater (OSM
+`man_made=breakwater`, `area=yes`, a ~180m-long digitised polygon -- almost certainly the
+real, small breakwater at Hilton Beach itself). Because that structure has a long
+footprint, the ray's first POST-floor sample (300m out along the swell bearing) was still
+only ~134m laterally from the SAME nearby structure, so it registered a "hit" anyway --
+the floor protected the beach's own coordinate from itself, but not from the thing it was
+trying to exclude.
+
+This is the identical failure shape as the graded-obstruction fix from the day before: a
+structure genuinely local to the beach being counted as if it were out at sea. Fixed by
+excluding the whole structure (every segment of it, at every sample distance) whenever ANY
+point of it is closer than `OBSTRUCTION_MIN_CHECK_DISTANCE_M` to the beach's own
+coordinate, not just filtering samples near the beach
+(`_excluded_structure_indices`, cached on the exact `(lat, lon)` -- same
+no-rounding discipline as `_projected_structures`). The grid index
+(`_structure_grid`) now tags each bucketed segment with the index of the structure line it
+came from, so a query can skip an entire excluded structure cheaply.
+
+Verified this does not weaken genuine, farther-out obstruction: Netanya's groyne (~436m
+from its beach coordinate) and Bat Yam's pier (~584m) are both untouched by the change and
+still register real, graded obstruction at today's swell. Herzliya's own marina breakwater
+(~93m, the case that originally motivated `OBSTRUCTION_MIN_CHECK_DISTANCE_M`) is now
+correctly excluded everywhere rather than only near the beach, which also resolves the
+near-zero-but-nonzero "grazing" values the previous day's graded-obstruction test measured
+for it -- those are now exactly 0.0, and the graded-obstruction test was rewritten to
+demonstrate grading against Netanya's real, non-excluded, farther-out structure instead.
+
+Result: Tel Aviv (Hilton) went from 0.59m to 0.79m face height for the same hour, in line
+with Herzliya (0.83m), Hadera (0.79m) and Palmachim (0.79m) -- all four have nearly
+identical raw offshore height and no genuine nearby obstruction. Netanya (0.54m) and Bat
+Yam (0.65m) remain lower, and correctly so: both have a real structure several hundred
+metres out that the graded model still detects. The remaining beach-to-beach spread is now
+explainable entirely by directional exposure (shoreline bearing vs swell angle) and real,
+farther-out structures -- not an artifact of where a beach's coordinate happens to have
+been seeded relative to its own local infrastructure.
+
+Regression test:
+`tests/test_exposure_obstruction.py::test_structure_near_the_beach_itself_is_excluded_entirely_not_just_near_samples`.

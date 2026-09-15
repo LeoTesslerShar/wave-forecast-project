@@ -21,24 +21,17 @@ def test_stays_within_zero_and_the_maximum_strength():
 def test_obstruction_is_graded_by_closest_approach_not_all_or_nothing():
     """Regression test for the binary-penalty bug (docs/DECISIONS.md): obstruction used to
     be a flat OBSTRUCTION_STRENGTH the moment anything came within
-    OBSTRUCTION_LATERAL_THRESHOLD_M, which made the model discontinuous -- Herzliya took the
-    FULL 40% reduction at a 295 degree swell and zero at 296, because its coordinate sits
-    ~93m from the marina breakwater and the ray's closest approach crossed the threshold
-    right there. A real forecast (swell from 293 degrees) landed on the wrong side of that
-    cliff and reported Herzliya ~40% smaller than Palmachim despite a HIGHER offshore
-    height. Grading by closest approach removes the cliff without inventing new physics."""
-    herzliya = (32.1660, 34.7960)
-
-    # Either side of the old cliff: must now differ by a little, not by the full strength.
-    near_cliff = obstruction_fraction(*herzliya, 295.0)
-    past_cliff = obstruction_fraction(*herzliya, 296.0)
-    assert past_cliff == 0.0
-    assert 0.0 < near_cliff < 0.1 * OBSTRUCTION_STRENGTH, (
-        f"a ray grazing the threshold should be nearly unobstructed, got {near_cliff}"
+    OBSTRUCTION_LATERAL_THRESHOLD_M, which made the model discontinuous. Netanya's groyne
+    sits ~436m from its beach coordinate (well outside the near-beach exclusion radius, so
+    this exercises grading itself, not exclusion): at a 293 degree swell the ray grazes it
+    at ~42m lateral, comfortably inside the threshold but far from a direct hit -- grading
+    must land somewhere in between, not snap to the flat maximum."""
+    netanya = (32.321, 34.849)
+    graded = obstruction_fraction(*netanya, 293.0)
+    assert 0.15 * OBSTRUCTION_STRENGTH < graded < 0.85 * OBSTRUCTION_STRENGTH, (
+        f"a ray grazing a real, non-excluded structure at ~42m (out of a 150m threshold) "
+        f"should land clearly between 0 and the flat maximum, got {graded}"
     )
-
-    # The swell direction that exposed the bug: a graze, so only a token reduction.
-    assert 0.0 < obstruction_fraction(*herzliya, 293.0) < 0.2 * OBSTRUCTION_STRENGTH
 
     # Bat Yam at the same swell: the ray crosses a structure almost head-on (~13m), so it
     # must still take nearly the full reduction -- grading must not defang real blocking.
@@ -47,6 +40,27 @@ def test_obstruction_is_graded_by_closest_approach_not_all_or_nothing():
         f"a ray passing within ~13m of a breakwater must still be heavily blocked, "
         f"got {bat_yam_direct}"
     )
+
+
+def test_structure_near_the_beach_itself_is_excluded_entirely_not_just_near_samples():
+    """Regression test for a user report (docs/DECISIONS.md): Tel Aviv (Hilton) showed a
+    25% obstruction driven by a breakwater only ~13m from its own beach coordinate -- local
+    infrastructure at the beach itself, not a genuine offshore shadow-caster. The bug was
+    that OBSTRUCTION_MIN_CHECK_DISTANCE_M only skipped ray SAMPLES within that distance of
+    the beach, not the offending structure itself, so a later sample further along the ray
+    could still register a hit against the very same nearby structure (its footprint reached
+    out that far). A real forecast (swell 299 degrees) triggered exactly this. Fixed by
+    excluding any structure with a point closer than OBSTRUCTION_MIN_CHECK_DISTANCE_M to the
+    beach from consideration at every sample distance, not only the first few."""
+    tel_aviv_hilton = (32.087, 34.769)
+    assert obstruction_fraction(*tel_aviv_hilton, 299.0) == 0.0
+
+    # And Herzliya's marina breakwater (~93m from its coordinate) must likewise no longer
+    # contribute anywhere -- this was the case that originally motivated the exclusion
+    # concept, before it turned out only to be applied at the sample level.
+    herzliya = (32.1660, 34.7960)
+    assert obstruction_fraction(*herzliya, 295.0) == 0.0
+    assert obstruction_fraction(*herzliya, 293.0) == 0.0
 
 
 def test_varies_by_direction_not_constant():

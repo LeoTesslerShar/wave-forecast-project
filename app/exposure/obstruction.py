@@ -59,15 +59,26 @@ OBSTRUCTION_LATERAL_THRESHOLD_M = 150.0
 OBSTRUCTION_STRENGTH = 0.4  # MAXIMUM reduction, applied when the ray passes straight over
 # a structure; scaled linearly down to 0 at OBSTRUCTION_LATERAL_THRESHOLD_M (see docstring)
 
-# A structure within this distance of the beach coordinate ITSELF (not a ray sample) is
-# almost always something immediately alongside the access point -- a small jetty at the
-# entrance, a slipway -- not a true offshore shadow-caster. Without this floor, any beach
-# whose (approximate, per data/beaches.yml) coordinate happens to sit within
-# OBSTRUCTION_LATERAL_THRESHOLD_M of ANY structure gets flagged as obstructed from nearly
-# every swell direction, because the ray's first sample is still that close to the start
-# point regardless of bearing. Found via the Bat Yam vs Herzliya acceptance test: Herzliya's
-# marina breakwater sits ~93m from the seeded coordinate, which without this floor made
+# A structure within this distance of the beach coordinate ITSELF is almost always
+# something immediately alongside the access point -- a small jetty at the entrance, a
+# marina wall, a slipway -- not a true offshore shadow-caster, and is excluded from
+# obstruction checks ENTIRELY (see _excluded_structure_indices), not just skipped for the
+# first few ray samples. Found via the Bat Yam vs Herzliya acceptance test: Herzliya's
+# marina breakwater sits ~93m from the seeded coordinate, which without this exclusion made
 # obstruction fire for 5 of 5 tested swell directions instead of tracking direction at all.
+#
+# The first version of this fix only skipped ray SAMPLES within this distance of the beach,
+# not the structure itself -- which meant a large/close structure (e.g. an area=yes
+# breakwater polygon with a long footprint) could still register a hit from a LATER sample
+# further along the ray, because that sample happened to still be close to the SAME nearby
+# structure. Found via a user report: Tel Aviv (Hilton) showed a 25% obstruction from a
+# breakwater only 13m from its own beach coordinate -- clearly local infrastructure, not an
+# offshore shadow, but the sample-only floor let it through because the hit landed at the
+# ray's first post-floor sample (300m out), which was still only ~134m lateral from that
+# same 180m-long structure. Excluding the whole structure whenever ANY part of it is closer
+# than this distance to the beach fixes it without weakening real, further-out obstruction
+# (e.g. Netanya's groyne at ~440m, Bat Yam's pier at ~584m, both still detected). See
+# docs/DECISIONS.md.
 OBSTRUCTION_MIN_CHECK_DISTANCE_M = 300.0
 
 # Must be >= OBSTRUCTION_LATERAL_THRESHOLD_M for the 3x3-neighbourhood grid search below to
@@ -93,22 +104,25 @@ def _cell_of(x: float, y: float) -> tuple[int, int]:
     return (int(x // GRID_CELL_M), int(y // GRID_CELL_M))
 
 
+SegmentWithSource = tuple[tuple[float, float], tuple[float, float], int]  # (a, b, structure_index)
+
+
 @lru_cache(maxsize=32)
-def _structure_grid(
-    ref_lat: float,
-) -> dict[tuple[int, int], tuple[tuple[tuple[float, float], tuple[float, float]], ...]]:
-    """Every structure segment, bucketed into each grid cell its bounding box overlaps.
-    Built once per (cached) reference latitude, reused for every ray-cast sample against
-    that beach for the life of the process."""
-    grid: dict[tuple[int, int], list[tuple[tuple[float, float], tuple[float, float]]]] = {}
-    for pts in _projected_structures(ref_lat):
+def _structure_grid(ref_lat: float) -> dict[tuple[int, int], tuple[SegmentWithSource, ...]]:
+    """Every structure segment, bucketed into each grid cell its bounding box overlaps, each
+    tagged with the index of the structure (line) it came from -- so a query can exclude an
+    entire nearby structure, not just the one segment closest to a given sample point (see
+    _excluded_structure_indices). Built once per (cached) reference latitude, reused for
+    every ray-cast sample against that beach for the life of the process."""
+    grid: dict[tuple[int, int], list[SegmentWithSource]] = {}
+    for struct_idx, pts in enumerate(_projected_structures(ref_lat)):
         for i in range(len(pts) - 1):
             a, b = pts[i], pts[i + 1]
             gx0, gx1 = sorted((int(a[0] // GRID_CELL_M), int(b[0] // GRID_CELL_M)))
             gy0, gy1 = sorted((int(a[1] // GRID_CELL_M), int(b[1] // GRID_CELL_M)))
             for gx in range(gx0, gx1 + 1):
                 for gy in range(gy0, gy1 + 1):
-                    grid.setdefault((gx, gy), []).append((a, b))
+                    grid.setdefault((gx, gy), []).append((a, b, struct_idx))
     return {k: tuple(v) for k, v in grid.items()}
 
 
@@ -122,6 +136,27 @@ def _distance_point_to_segment(px: float, py: float, a: tuple[float, float], b: 
     t = max(0.0, min(1.0, ((px - ax) * abx + (py - ay) * aby) / ab_len_sq))
     cx, cy = ax + t * abx, ay + t * aby
     return ((px - cx) ** 2 + (py - cy) ** 2) ** 0.5
+
+
+@lru_cache(maxsize=32)
+def _excluded_structure_indices(lat: float, lon: float) -> frozenset[int]:
+    """Indices (into _projected_structures) of every structure with any point closer than
+    OBSTRUCTION_MIN_CHECK_DISTANCE_M to this exact beach coordinate -- local infrastructure
+    at the beach itself, not an offshore shadow-caster (see that constant's docstring).
+    Cached on the EXACT (lat, lon), same discipline as _projected_structures: one beach's
+    calls all share its own literal coordinate, so this is one exclusion-set computation
+    per beach per process with no approximation risk. Deliberately exhaustive (checks all
+    ~226 structures against one point) rather than grid-indexed -- this runs once per beach,
+    not once per ray sample, so it is not the hot path the grid exists for."""
+    proj = LocalProjection(ref_lat=lat)
+    bx, by = proj.to_xy(lat, lon)
+    excluded = set()
+    for struct_idx, pts in enumerate(_projected_structures(lat)):
+        for i in range(len(pts) - 1):
+            if _distance_point_to_segment(bx, by, pts[i], pts[i + 1]) < OBSTRUCTION_MIN_CHECK_DISTANCE_M:
+                excluded.add(struct_idx)
+                break
+    return frozenset(excluded)
 
 
 def _distance_to_nearest_structure(lat: float, lon: float, proj: LocalProjection) -> float:
@@ -139,22 +174,30 @@ def _distance_to_nearest_structure(lat: float, lon: float, proj: LocalProjection
     return best
 
 
-def _nearest_structure_within(lat: float, lon: float, proj: LocalProjection, threshold_m: float) -> float:
-    """Distance to the nearest structure, grid-indexed -- only inspects segments in the
-    sample's own cell and its 8 neighbours, not all ~226 structure lines. Correct given
-    GRID_CELL_M >= threshold_m: any segment within threshold_m of (px, py) has at least one
-    point within threshold_m, which places it in the same cell as (px, py) or an adjacent
-    one. Returns inf when nothing is within threshold_m -- the result is therefore EXACT
-    whenever it is <= threshold_m, which is the only range the caller grades on, but must
-    not be read as a true global nearest distance beyond that (use
-    _distance_to_nearest_structure for that)."""
+def _nearest_structure_within(
+    lat: float,
+    lon: float,
+    proj: LocalProjection,
+    threshold_m: float,
+    excluded: frozenset[int] = frozenset(),
+) -> float:
+    """Distance to the nearest NON-EXCLUDED structure, grid-indexed -- only inspects
+    segments in the sample's own cell and its 8 neighbours, not all ~226 structure lines.
+    Correct given GRID_CELL_M >= threshold_m: any segment within threshold_m of (px, py) has
+    at least one point within threshold_m, which places it in the same cell as (px, py) or
+    an adjacent one. Returns inf when nothing (non-excluded) is within threshold_m -- the
+    result is therefore EXACT whenever it is <= threshold_m, which is the only range the
+    caller grades on, but must not be read as a true global nearest distance beyond that
+    (use _distance_to_nearest_structure for that, which does not support exclusion)."""
     px, py = proj.to_xy(lat, lon)
     gx, gy = _cell_of(px, py)
     grid = _structure_grid(proj.ref_lat)
     best = float("inf")
     for dx in (-1, 0, 1):
         for dy in (-1, 0, 1):
-            for a, b in grid.get((gx + dx, gy + dy), ()):
+            for a, b, struct_idx in grid.get((gx + dx, gy + dy), ()):
+                if struct_idx in excluded:
+                    continue
                 d = _distance_point_to_segment(px, py, a, b)
                 if d < best:
                     best = d
@@ -180,13 +223,14 @@ def obstruction_fraction(
         return 0.0
 
     proj = LocalProjection(ref_lat=lat)
+    excluded = _excluded_structure_indices(lat, lon)
     steps = max(1, int(max_range_m // OBSTRUCTION_STEP_M))
     start_step = max(1, int(OBSTRUCTION_MIN_CHECK_DISTANCE_M // OBSTRUCTION_STEP_M))
     closest = float("inf")
     for i in range(start_step, steps + 1):
         dist = i * OBSTRUCTION_STEP_M
         sample_lat, sample_lon = destination_point(lat, lon, swell_direction_from, dist)
-        d = _nearest_structure_within(sample_lat, sample_lon, proj, OBSTRUCTION_LATERAL_THRESHOLD_M)
+        d = _nearest_structure_within(sample_lat, sample_lon, proj, OBSTRUCTION_LATERAL_THRESHOLD_M, excluded)
         if d < closest:
             closest = d
 
