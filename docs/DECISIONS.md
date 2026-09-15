@@ -669,3 +669,66 @@ not a measurement, and the per-day scatter is wide (0.60-1.14). The physically r
 is a period-dependent conversion -- the ratio should climb toward the textbook 1.3 if this
 coast ever gets a genuine long-period ground swell, and today's data is all 5-7s so it
 cannot constrain that end at all. Worth revisiting with a winter storm in the sample.
+
+## 2026-09-15 -- Piers were treated as wave barriers; obstruction strength also recalibrated
+
+User asked why 19/09 showed "surf size 0.46" against "offshore size 0.88" for a beach --
+too big a gap for the 0.8x surf-height conversion alone to explain. Traced it: the beach
+was Bat Yam, and the gap was two stacked effects -- a 34% obstruction penalty, THEN the
+0.8x conversion (0.88 Hs offshore -> 0.57 Hs at the beach after "obstruction" -> 0.46 surf
+height). The obstruction was the real bug.
+
+**What was actually there.** The structure driving it is OSM way `109274249`, tagged
+`man_made=pier` + `highway=footway` -- a walkway pier standing on piles. Waves pass
+straight underneath a piled pier; it is not a wave barrier the way a solid breakwater or
+groyne is, but `app/exposure/obstruction.py` treated every OSM `man_made` type identically.
+Checked the dataset: of 226 structures, **157 (69%) are tagged `pier`**. Only 4 of those
+carry a `highway` tag and 30 are explicitly `floating`, so neither tag reliably separates
+piled from solid piers on its own -- but the `pier` type itself is a real, available signal
+that most piled structures are not full barriers.
+
+**Verified against GoSurf.** gosurf.co.il's published Bat Yam and Tel Aviv forecasts are
+**identical on both sampled days** (today 30-50cm both; Saturday 19/09 60-100cm both) --
+these two beaches sit on an open, mostly unobstructed stretch of coast and should track
+each other, which the pier bug was actively breaking.
+
+**Fix 1 -- type weighting.** Added `structure_kinds()` (`app/exposure/coastline_data.py`),
+index-aligned with `structure_lines()`, exposing each structure's `man_made` tag.
+`OBSTRUCTION_TYPE_WEIGHT = {"pier": 0.0}` in `obstruction.py`, default weight `1.0` for any
+other/unknown type so an unfamiliar future tag is never silently dropped -- only `pier` is
+special-cased. This required changing the grading algorithm: the old version tracked the
+single nearest distance across the whole ray and graded once at the end, which is wrong
+once distance and type are both in play -- a close zero-weight pier could otherwise mask a
+farther-but-real groyne. Replaced with `_max_weighted_severity()`, which computes a
+per-structure `weight * (1 - distance/threshold)` severity at each sample and tracks the
+**max severity** across the ray, not the min distance.
+(`_nearest_structure_within`, the pure-geometry distance function, is untouched and still
+backs `test_grid_threshold_check_agrees_with_exhaustive_scan` -- that correctness check
+stays type-agnostic on purpose.)
+
+**Fix 2 -- obstruction strength recalibrated, again.** While investigating, also checked
+Netanya, which has a genuine (non-piled) groyne obstruction: GoSurf puts Netanya only ~12%
+below Tel Aviv/Bat Yam on the same days, while the model (even before this fix) was cutting
+it ~29%, about 2.4x too strong. Lowered `OBSTRUCTION_STRENGTH` from `0.4` to `0.2` -- the
+maximum possible reduction, for a dead-on hit on a real, full-weight structure. This is the
+THIRD time this file records a downward obstruction-strength correction in two days (binary
+40% -> graded 40% -> graded 20%); each one was checked against a different piece of real
+evidence (Bat-Yam-vs-Herzliya known-truth, then GoSurf comparisons), and the honest reading
+is that this constant has no real ground truth behind it at all -- only a shrinking series
+of corrections against whatever comparison was available that day.
+
+**Result, measured live (19/09, 06:00-15:00, same swell):**
+
+| Beach | Before | After | GoSurf (same window) |
+|---|---|---|---|
+| Bat Yam | 0.46 m (obstruction 0.34) | 0.66-0.70 m (obstruction 0.0) | 0.60-1.00 m |
+| Netanya | 0.48 m (obstruction 0.29) | 0.57-0.61 m (obstruction 0.14) | 0.50-0.90 m |
+| Tel Aviv / Herzliya | 0.69-0.71 m (unaffected) | 0.66-0.71 m (unaffected) | 0.60-1.00 m |
+
+Bat Yam now tracks Tel Aviv/Herzliya almost exactly, matching GoSurf showing them
+identical. Netanya sits ~12-15% below the others, matching GoSurf's own gap. Confirmed via
+a dedicated test (`test_piers_do_not_count_as_wave_barriers`) that Bat Yam's OTHER real
+structure (a breakwater, different from the pier, hit at swell 330-345) is unaffected and
+still blocks near-fully -- the fix is type-selective, not a blanket weakening.
+
+94 tests passing, including the updated/new obstruction tests.

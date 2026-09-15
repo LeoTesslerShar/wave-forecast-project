@@ -9,7 +9,8 @@ swell direction is treated as partly blocked for this beach.
 
 This is a deliberately coarse heuristic, not a real diffraction/shadowing model:
   - it does not account for structure height, submersion, or the swell's actual angular
-    width;
+    width, beyond a per-TYPE weight (OBSTRUCTION_TYPE_WEIGHT) that treats piers as
+    non-barriers and everything else as a full barrier;
   - the check range (1500 m) and lateral threshold (150 m) are judgment calls with no
     ground truth to tune them against -- see docs/DECISIONS.md;
   - the reduction is scaled by how directly the ray passes the structure, but that scaling
@@ -50,14 +51,36 @@ tests/test_exposure_obstruction.py (random sample points, not just the known cas
 """
 from functools import lru_cache
 
-from app.exposure.coastline_data import structure_lines
+from app.exposure.coastline_data import structure_kinds, structure_lines
 from app.exposure.geo_utils import LocalProjection, destination_point
 
 OBSTRUCTION_CHECK_RANGE_M = 1500.0
 OBSTRUCTION_STEP_M = 100.0
 OBSTRUCTION_LATERAL_THRESHOLD_M = 150.0
-OBSTRUCTION_STRENGTH = 0.4  # MAXIMUM reduction, applied when the ray passes straight over
-# a structure; scaled linearly down to 0 at OBSTRUCTION_LATERAL_THRESHOLD_M (see docstring)
+
+# MAXIMUM reduction, applied when the ray passes straight over a full-weight structure
+# (see OBSTRUCTION_TYPE_WEIGHT); scaled linearly down to 0 at OBSTRUCTION_LATERAL_THRESHOLD_M
+# (see module docstring). Lowered from an earlier 0.4 -- checked live against GoSurf
+# (gosurf.co.il, an Israeli surf-facing forecast): Netanya's real groyne was cutting its
+# displayed size ~29% below an unobstructed beach on the same swell, while GoSurf's own
+# published numbers put Netanya only ~12% below Tel Aviv on two separate sampled days. 0.2
+# is a rough match to that; still an unvalidated judgement call, same caveat as
+# SURF_HEIGHT_FACTOR -- see docs/DECISIONS.md.
+OBSTRUCTION_STRENGTH = 0.2
+
+# Not every OSM `man_made` type is an equal wave barrier. A `pier` in this dataset is very
+# often a piled walkway that waves pass straight underneath -- not a barrier at all -- while
+# a `breakwater` or `groyne` is normally a solid structure. Of the 226 structures in
+# structures.geojson, 157 (69%) are tagged `pier`; only 4 of those carry a `highway` tag and
+# 30 are explicitly `floating`, so neither tag reliably separates piled from solid piers --
+# but the type itself is a real, available signal, and zeroing it out entirely was checked
+# directly against a concrete case: OSM way 109274249 (man_made=pier, highway=footway, at
+# Bat Yam) was cutting Bat Yam's displayed size 34% below Tel Aviv's on an identical swell,
+# while GoSurf shows the two beaches IDENTICAL on the same days. Any type not listed here
+# defaults to full weight (1.0) -- only `pier` is special-cased, so an unfamiliar future tag
+# value is never silently dropped from the model. See docs/DECISIONS.md.
+OBSTRUCTION_TYPE_WEIGHT: dict[str, float] = {"pier": 0.0}
+OBSTRUCTION_DEFAULT_TYPE_WEIGHT = 1.0
 
 # A structure within this distance of the beach coordinate ITSELF is almost always
 # something immediately alongside the access point -- a small jetty at the entrance, a
@@ -204,6 +227,44 @@ def _nearest_structure_within(
     return best if best <= threshold_m else float("inf")
 
 
+def _max_weighted_severity(
+    lat: float,
+    lon: float,
+    proj: LocalProjection,
+    threshold_m: float,
+    excluded: frozenset[int],
+) -> float:
+    """0..1 severity at one sample point, considering structure TYPE as well as distance --
+    the hot-path function obstruction_fraction actually grades on. Distinct from
+    _nearest_structure_within (which stays pure-geometry, type-agnostic, and is what the
+    grid-vs-exhaustive-scan correctness test in tests/test_exposure_obstruction.py checks).
+
+    Must track the max severity across candidate segments, NOT the nearest distance and
+    then apply a weight -- a zero-weight pier sitting closer than a real, farther-out
+    groyne must not mask the groyne. Skips zero-weight segments before computing distance
+    at all (piers are ~69% of the dataset, so this also saves real work)."""
+    px, py = proj.to_xy(lat, lon)
+    gx, gy = _cell_of(px, py)
+    grid = _structure_grid(proj.ref_lat)
+    kinds = structure_kinds()
+    best = 0.0
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            for a, b, struct_idx in grid.get((gx + dx, gy + dy), ()):
+                if struct_idx in excluded:
+                    continue
+                weight = OBSTRUCTION_TYPE_WEIGHT.get(kinds[struct_idx], OBSTRUCTION_DEFAULT_TYPE_WEIGHT)
+                if weight <= 0.0:
+                    continue
+                d = _distance_point_to_segment(px, py, a, b)
+                if d > threshold_m:
+                    continue
+                severity = weight * (1.0 - d / threshold_m)
+                if severity > best:
+                    best = severity
+    return best
+
+
 def obstruction_fraction(
     lat: float,
     lon: float,
@@ -211,14 +272,16 @@ def obstruction_fraction(
     *,
     max_range_m: float = OBSTRUCTION_CHECK_RANGE_M,
 ) -> float:
-    """0.0 (clear) up to OBSTRUCTION_STRENGTH (the ray passes straight over a structure),
-    scaled linearly by the ray's CLOSEST approach to any structure -- see the module
-    docstring for why this is graded rather than all-or-nothing. Returns 0.0 immediately if
-    no structures are loaded at all.
+    """0.0 (clear) up to OBSTRUCTION_STRENGTH (the ray passes straight over a full-weight
+    structure), scaled linearly by the ray's CLOSEST approach to any non-zero-weight
+    structure -- see the module docstring for why this is graded rather than all-or-nothing,
+    and OBSTRUCTION_TYPE_WEIGHT for why not every structure counts the same. Returns 0.0
+    immediately if no structures are loaded at all.
 
     Every sample is checked rather than returning on the first one inside the threshold:
     the grade depends on the closest approach along the whole ray, so an early grazing pass
-    must not mask a later direct hit."""
+    must not mask a later direct hit -- and, since severity is now per-structure-type, a
+    nearby zero-weight pier must not mask a farther-out real barrier either."""
     if not structure_lines():
         return 0.0
 
@@ -226,14 +289,12 @@ def obstruction_fraction(
     excluded = _excluded_structure_indices(lat, lon)
     steps = max(1, int(max_range_m // OBSTRUCTION_STEP_M))
     start_step = max(1, int(OBSTRUCTION_MIN_CHECK_DISTANCE_M // OBSTRUCTION_STEP_M))
-    closest = float("inf")
+    worst_severity = 0.0
     for i in range(start_step, steps + 1):
         dist = i * OBSTRUCTION_STEP_M
         sample_lat, sample_lon = destination_point(lat, lon, swell_direction_from, dist)
-        d = _nearest_structure_within(sample_lat, sample_lon, proj, OBSTRUCTION_LATERAL_THRESHOLD_M, excluded)
-        if d < closest:
-            closest = d
+        severity = _max_weighted_severity(sample_lat, sample_lon, proj, OBSTRUCTION_LATERAL_THRESHOLD_M, excluded)
+        if severity > worst_severity:
+            worst_severity = severity
 
-    if closest > OBSTRUCTION_LATERAL_THRESHOLD_M:
-        return 0.0
-    return round(OBSTRUCTION_STRENGTH * (1.0 - closest / OBSTRUCTION_LATERAL_THRESHOLD_M), 3)
+    return round(OBSTRUCTION_STRENGTH * worst_severity, 3)

@@ -33,13 +33,39 @@ def test_obstruction_is_graded_by_closest_approach_not_all_or_nothing():
         f"should land clearly between 0 and the flat maximum, got {graded}"
     )
 
-    # Bat Yam at the same swell: the ray crosses a structure almost head-on (~13m), so it
-    # must still take nearly the full reduction -- grading must not defang real blocking.
-    bat_yam_direct = obstruction_fraction(32.0133, 34.7432, 293.0)
-    assert bat_yam_direct > 0.8 * OBSTRUCTION_STRENGTH, (
-        f"a ray passing within ~13m of a breakwater must still be heavily blocked, "
-        f"got {bat_yam_direct}"
+    # Netanya at a 250 degree swell: the ray crosses its groyne almost head-on (~1.6m), so
+    # it must still take nearly the full reduction -- grading must not defang real blocking.
+    netanya_direct = obstruction_fraction(*netanya, 250.0)
+    assert netanya_direct > 0.9 * OBSTRUCTION_STRENGTH, (
+        f"a ray passing within ~2m of a real groyne must still be heavily blocked, "
+        f"got {netanya_direct}"
     )
+
+
+def test_piers_do_not_count_as_wave_barriers():
+    """Regression test for a user report (docs/DECISIONS.md): Bat Yam showed a 34%
+    obstruction driven by OSM way 109274249 (man_made=pier, highway=footway) -- a walkway
+    pier on piles, which waves pass straight under. It is not a wave barrier the way a
+    solid breakwater or groyne is, but the model was treating every structure type
+    identically. Checked live against GoSurf (gosurf.co.il): it shows Bat Yam IDENTICAL to
+    Tel Aviv on the same days, while this model put Bat Yam ~34% lower on the same swell.
+    OBSTRUCTION_TYPE_WEIGHT now zeroes out `pier`; a real breakwater/groyne is unaffected
+    (see test_obstruction_is_graded_by_closest_approach_not_all_or_nothing's Netanya case,
+    which still blocks near-fully at the same kind of close range)."""
+    bat_yam = (32.0133, 34.7432)
+    # Swell 293/295 is driven entirely by the pier (nearest structure at both is OSM way
+    # 109274249, confirmed directly) -- must now read exactly 0.0, not just reduced.
+    assert obstruction_fraction(*bat_yam, 293.0) == 0.0
+    assert obstruction_fraction(*bat_yam, 295.0) == 0.0
+
+    # Bat Yam ALSO has a real breakwater (a different structure, not the pier) that the
+    # ray passes close to at swell 330-345 -- this must stay obstructed. Confirms the fix
+    # is type-selective, not a blanket weakening of Bat Yam's obstruction generally.
+    for swell_dir in (330.0, 335.0, 345.0):
+        assert obstruction_fraction(*bat_yam, swell_dir) > 0.8 * OBSTRUCTION_STRENGTH, (
+            f"a near-direct pass over Bat Yam's real breakwater at swell {swell_dir} "
+            f"must still be heavily blocked -- only the pier should be zeroed"
+        )
 
 
 def test_structure_near_the_beach_itself_is_excluded_entirely_not_just_near_samples():
