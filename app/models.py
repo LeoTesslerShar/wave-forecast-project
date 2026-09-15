@@ -34,6 +34,10 @@ class Beach(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Hebrew display name -- the UI is Hebrew/RTL only, no i18n framework (docs/DECISIONS.md).
+    # Nullable so an unseeded/unknown beach never breaks the API; the frontend falls back to
+    # `name` if this is absent rather than showing a blank.
+    name_he: Mapped[str | None] = mapped_column(String(128), nullable=True)
     lat: Mapped[float] = mapped_column(Float, nullable=False)
     lon: Mapped[float] = mapped_column(Float, nullable=False)
     # Left NULL until Phase 2 computes it from OSM coastline geometry.
@@ -225,3 +229,48 @@ class AlertSent(Base):
     window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     conditions_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SlotWatch(Base):
+    """A user watching ONE specific forecast slot for one beach -- distinct from
+    Subscription (a standing, recurring criteria rule evaluated against every day). Tapping
+    "alert me" on an hourly slot in the UI creates one of these.
+
+    Not a fixed-offset reminder: it stays dormant until `watch_from` (= valid_at minus
+    app/alerting/slot_watch.py's WATCH_LEAD_HOURS, stored rather than computed so the lead
+    is auditable and independently tunable later), then is re-evaluated on every dispatcher
+    tick and fires the moment the slot's quality_score crosses QUALIFY_SCORE -- not before,
+    because Israeli coastal forecasts move too fast to trust much earlier than that. If it
+    was alerted and the slot later falls back below the bar, one cancellation is sent and
+    status moves to 'cancelled' -- see docs/DECISIONS.md.
+
+    Deliberately its own table, not an extension of Subscription: Subscription's
+    time_window_start/end are NOT NULL local wall-clock Time columns describing a recurring
+    window, not a single absolute instant, and AlertSent.subscription_id is a NOT NULL FK --
+    neither fits a one-off watch on a specific slot without weakening an existing invariant.
+    """
+
+    __tablename__ = "slot_watches"
+    __table_args__ = (
+        UniqueConstraint("user_id", "beach_id", "valid_at", name="uq_slot_watch_slot"),
+        # The dispatcher's due-query: status='pending' or 'alerted' AND watch_from <= now.
+        Index("ix_slot_watch_due", "status", "watch_from"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    beach_id: Mapped[str] = mapped_column(ForeignKey("beaches.id"), nullable=False)
+    valid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    watch_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # 'pending' (dormant or watching, not yet qualified) | 'alerted' (qualified, pushed) |
+    # 'cancelled' (qualified then fell back below the bar, cancellation pushed) |
+    # 'expired' (valid_at passed while still pending -- never qualified, no message sent).
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    alerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # What was actually said when the watch last fired (alert or cancellation) -- needed to
+    # detect the alerted -> cancelled transition, mirrors AlertSent.conditions_snapshot.
+    conditions_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    beach: Mapped["Beach"] = relationship()

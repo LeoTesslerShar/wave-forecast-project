@@ -9,7 +9,7 @@ import pytest
 from pywebpush import WebPushException
 
 from app.alerting.push import PushResult, send_push
-from app.alerting.runner import _deliver_to_user
+from app.alerting.runner import deliver_to_user
 from app.models import PushSubscription
 
 
@@ -76,7 +76,7 @@ async def test_expired_push_subscription_is_deactivated_not_retried(db_session):
             gs.return_value.vapid_private_key = "priv"
             gs.return_value.vapid_public_key = "pub"
             gs.return_value.vapid_claims_email = "a@b.com"
-            await _deliver_to_user(db_session, "u1", {"title": "test"})
+            await deliver_to_user(db_session, "u1", {"title": "test"})
 
     await db_session.refresh(push_sub)
     assert push_sub.active is False

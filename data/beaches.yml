@@ -14,6 +14,7 @@
 beaches:
 - id: bat_yam
   name: Bat Yam
+  name_he: בת ים
   lat: 32.0133
   lon: 34.7432
   shoreline_bearing: 284.6
@@ -21,18 +22,21 @@ beaches:
   shoreline_bearing_note: beach coord 611m from nearest OSM coastline
 - id: herzliya
   name: Herzliya
+  name_he: הרצליה
   lat: 32.166
   lon: 34.796
   shoreline_bearing: 301.1
   shoreline_bearing_source: computed_osm_coastline
 - id: palmachim
   name: Palmachim
+  name_he: פלמחים
   lat: 31.93
   lon: 34.694
   shoreline_bearing: 296.7
   shoreline_bearing_source: computed_osm_coastline
 - id: netanya
   name: Netanya (Sironit)
+  name_he: נתניה (סירונית)
   lat: 32.321
   lon: 34.849
   shoreline_bearing: 282.3
@@ -42,6 +46,7 @@ beaches:
     verified this is a legitimate mapped way, not sparse/missing data)
 - id: ashdod
   name: Ashdod (Lido)
+  name_he: אשדוד (לידו)
   lat: 31.783
   lon: 34.629
   shoreline_bearing: 295.2
@@ -52,6 +57,7 @@ beaches:
     578m from nearest OSM coastline
 - id: hadera
   name: Hadera
+  name_he: חדרה
   lat: 32.437
   lon: 34.883
   shoreline_bearing: 281.5
@@ -59,12 +65,14 @@ beaches:
   shoreline_bearing_note: beach coord 570m from nearest OSM coastline
 - id: olga
   name: Olga
+  name_he: אולגה
   lat: 32.4
   lon: 34.87
   shoreline_bearing: 262.4
   shoreline_bearing_source: computed_osm_coastline
 - id: tel_aviv_hilton
   name: Tel Aviv (Hilton)
+  name_he: תל אביב (הילטון)
   lat: 32.087
   lon: 34.769
   shoreline_bearing: 283.6

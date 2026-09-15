@@ -28,3 +28,12 @@ def local_date_range_for_utc_now(now_utc: datetime, days_ahead: int) -> list[dat
     day, and a subscription's "today" means the surfer's today, not UTC's."""
     today_local = now_utc.astimezone(JERUSALEM).date()
     return [today_local + timedelta(days=i) for i in range(days_ahead + 1)]
+
+
+def local_hour_label(instant_utc: datetime) -> str:
+    """A UTC instant as an Asia/Jerusalem 'DD/MM HH:MM' label, for notification text. No
+    server-side equivalent existed before app/alerting/slot_watch.py needed one -- the
+    frontend's localHourLabel (web/src/dateUtils.js) is client-side only and push payloads
+    are built here, on the server."""
+    local = instant_utc.astimezone(JERUSALEM)
+    return local.strftime("%d/%m %H:%M")

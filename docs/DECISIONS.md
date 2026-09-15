@@ -801,3 +801,49 @@ fetch-and-join, per this project's "no client-side derivation of API data" rule.
 Verified live: today's ~0.43-0.46m surf heights across all 8 beaches now score exactly 2.0
 (capped by size, several further capped by wind) and read "poor" -- not "excellent". 97
 tests passing.
+
+## 2026-09-15 -- Per-slot watch alerts: a new table, not an extension of Subscription
+
+User request: an "alert me" button on a specific forecast slot that watches it and pushes
+a notification when it qualifies -- distinct from the existing standing `Subscription`
+rules (recurring criteria evaluated over a rolling date range). Clarified through follow-up
+that this should NOT be a fixed-offset reminder ("push 12h before") but a genuine watch:
+dormant until 12h before the slot (forecasts move too fast to trust earlier), then
+re-checked as forecasts refresh and fired the moment the slot's `quality_score` crosses
+5.0/10 -- with a cancellation pushed if it later falls back below that bar.
+
+**New `slot_watches` table**, not an extension of `Subscription`: `Subscription.time_
+window_start/end` are NOT NULL local wall-clock `Time` columns describing a *recurring*
+window, not a single absolute instant, and `AlertSent.subscription_id` is a NOT NULL FK --
+a one-off watch on a specific slot fits neither without weakening an existing invariant.
+State machine: `pending` (dormant or watching, not yet qualified) -> `alerted` (qualified,
+pushed) -> `cancelled` (fell back below the bar, cancellation pushed) or -> `expired` (the
+slot passed while still pending, never qualified, no message). `watch_from` (=
+`valid_at - WATCH_LEAD_HOURS`) is stored rather than computed on the fly, so the lead time
+is auditable per-row and independently tunable later without a backfill.
+`UniqueConstraint(user_id, beach_id, valid_at)` makes double-tapping the same slot
+idempotent -- the API route catches the constraint violation and returns the existing row
+rather than erroring.
+
+**Dispatcher polls a table rather than scheduling one-off jobs**, on a new interval job
+(`app/scheduler.py`, `settings.slot_watch_dispatch_minutes`, default 10 -- far more
+frequent than ingestion's 180, since "forecasts change fast" was the explicit reason for
+the 12h/watch-not-reminder design). APScheduler's default job store is in-memory, so a
+one-off `date`-trigger job per watch would be silently lost on any restart/redeploy, and
+every worker process would fire its own copy. A `SELECT ... FOR UPDATE SKIP LOCKED` poll
+against `slot_watches` has neither problem -- `skip_locked` (rather than `runner.py`'s
+plain `FOR UPDATE`) lets concurrent ticks skip past a row another tick is already handling
+instead of blocking the whole batch behind one slow push.
+
+Renamed `app/alerting/runner.py`'s private `_deliver_to_user` to public `deliver_to_user` --
+it is the only code that maps a user to their devices and handles push expiry, and the new
+`app/alerting/slot_watch.py` needed to call it without duplicating that lookup.
+
+Added `Beach.name_he` in the same migration (bundled since it touched the same revision
+chain, unrelated to slot watches otherwise) -- the UI is Hebrew/RTL only, no i18n
+framework, and beach names are data the API owns (`data/beaches.yml` / `app/seed.py`), not
+something the frontend should hardcode a translation map for.
+
+6 new tests in `tests/test_slot_watch.py` cover the full state machine against a real
+Postgres session (idempotent create, outside-window inaction, below-bar silence,
+qualify-fires-once, fall-back-sends-one-cancellation, expiry). 103 tests passing.

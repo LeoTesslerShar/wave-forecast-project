@@ -142,12 +142,12 @@ async def evaluate_subscription_for_date(
             "window_end": snapshot_to_store.window_end.isoformat(),
         }
 
-    await _deliver_to_user(session, sub.user_id, payload)
+    await deliver_to_user(session, sub.user_id, payload)
     log_event(logger, logging.INFO, "alert action taken", subscription_id=sub.id, target_date=str(target_date), kind=kind)
     return kind
 
 
-async def _deliver_to_user(session: AsyncSession, user_id: str, payload: dict) -> None:
+async def deliver_to_user(session: AsyncSession, user_id: str, payload: dict) -> None:
     push_subs = (
         await session.execute(
             select(PushSubscription).where(PushSubscription.user_id == user_id, PushSubscription.active.is_(True))

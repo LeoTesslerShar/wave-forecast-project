@@ -52,6 +52,15 @@ class Settings(BaseSettings):
         default=3, description="How many local calendar days ahead to evaluate subscriptions for."
     )
 
+    slot_watch_dispatch_minutes: int = Field(
+        default=10,
+        description=(
+            "How often the slot-watch dispatcher runs. Deliberately far more frequent than "
+            "ingestion_schedule_minutes (180) -- forecasts move fast, and a watch must fire "
+            "close to the moment it qualifies, not up to 3h late."
+        ),
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

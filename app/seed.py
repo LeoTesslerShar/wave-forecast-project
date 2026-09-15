@@ -26,6 +26,7 @@ async def seed_beaches_and_buoys(session: AsyncSession) -> dict:
         stmt = pg_insert(Beach).values(
             id=b["id"],
             name=b["name"],
+            name_he=b.get("name_he"),
             lat=b["lat"],
             lon=b["lon"],
             shoreline_bearing=b.get("shoreline_bearing"),
@@ -35,6 +36,7 @@ async def seed_beaches_and_buoys(session: AsyncSession) -> dict:
             index_elements=["id"],
             set_={
                 "name": stmt.excluded.name,
+                "name_he": stmt.excluded.name_he,
                 "lat": stmt.excluded.lat,
                 "lon": stmt.excluded.lon,
                 "shoreline_bearing": stmt.excluded.shoreline_bearing,

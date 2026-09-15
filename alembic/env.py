@@ -4,7 +4,17 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.db import Base
-from app.models import Beach, Buoy, Forecast, IngestionRun, Measurement  # noqa: F401 -- registers metadata
+from app.models import (  # noqa: F401 -- registers metadata
+    AlertSent,
+    Beach,
+    Buoy,
+    Forecast,
+    IngestionRun,
+    Measurement,
+    PushSubscription,
+    SlotWatch,
+    Subscription,
+)
 from app.settings import get_settings
 
 config = context.config

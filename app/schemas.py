@@ -6,6 +6,7 @@ from pydantic import BaseModel, field_validator
 class BeachOut(BaseModel):
     id: str
     name: str
+    name_he: str | None  # Hebrew display name -- the UI is Hebrew/RTL only, no i18n framework
     lat: float
     lon: float
     shoreline_bearing: float | None
@@ -236,3 +237,40 @@ class SubscriptionStatusOut(BaseModel):
     last_alert_target_date: str | None
     currently_alerted: bool
     message: str
+
+
+class SlotWatchCreate(BaseModel):
+    """Watch ONE specific forecast slot -- app/models.py::SlotWatch. Distinct from
+    SubscriptionCreate's recurring criteria: this is "tell me about THIS Thursday 06:00",
+    not "tell me whenever Herzliya is over 1m on a weekday dawn"."""
+
+    user_id: str
+    beach_id: str
+    valid_at: datetime
+
+    @field_validator("valid_at")
+    @classmethod
+    def _valid_at_is_future(cls, v: datetime):
+        if v.tzinfo is None:
+            raise ValueError("valid_at must be timezone-aware")
+        return v
+
+
+class SlotWatchOut(BaseModel):
+    id: int
+    user_id: str
+    beach_id: str
+    valid_at: datetime
+    watch_from: datetime
+    status: str  # "pending" | "alerted" | "cancelled" | "expired"
+    alerted_at: datetime | None
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class PushConfigOut(BaseModel):
+    """The VAPID public key, so the browser can call pushManager.subscribe(...). Not a
+    secret -- it is meant to be public, unlike vapid_private_key which never leaves the
+    server (app/alerting/push.py)."""
+
+    vapid_public_key: str
