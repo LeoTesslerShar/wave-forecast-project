@@ -1112,3 +1112,45 @@ identifier in this project is, something to match on, not display). New
 `QualityConfidence.weather`, hardcoded `"measured_forecast"`.
 
 New `tests/test_weather.py`. 112 tests passing.
+
+## 2026-09-16 -- Frontend: unified pill-table design across beach list/week, chart redesign
+
+User feedback: the beach list and the per-beach day list should look like the day-forecast
+table (same pill styling), not a different design per screen; and the week-view chart
+should label days, not hours, with the peak height/score called out numerically.
+
+**`BeachList.jsx`** and **`BeachWeek.jsx`** both rebuilt as `<table className="day-table">`
+-- the exact same CSS the hourly `BeachDay` table uses -- rather than the flex-row card
+layout each had before. `BeachList` shows one row per beach (current conditions, nearest
+hour to now); `BeachWeek` shows one row per DAY (not one strip per hour as the previous
+iteration had) -- explicitly "just a summary of the day," using the existing
+`bestHourForDate` helper for the day's score/wind and the day's full min/max across all its
+3-hour slots for the height-range pill. Both reuse the identical wind-pill/height-pill/
+score-fill classes and colour logic `BeachDay` already established, so the whole app now
+reads as one visual language rather than three.
+
+**Weather + temperature**, wired through from the previous entry's new backend fields: the
+hour cell in `BeachDay` (and the equivalent "current"/"midday" cell in `BeachList`/
+`BeachWeek`) now shows the REAL weather icon (`WeatherIcon`, new in `Icons.jsx`, resolving
+`weather_icon` + day/night into one of seven inline SVGs: clear, partly cloudy, cloudy,
+fog, rain, snow, storm) plus the temperature, replacing the earlier version's rough
+day/night-only Sun/Moon guess. `BeachWeek`'s one-icon-per-day picks the hour closest to
+13:00 local as representative, rather than showing 8 separate weather readings for one day.
+
+**`WaveChart.jsx`** rebuilt: x-axis labels are now day names (`today/tomorrow/weekday`,
+centred over that day's own span) instead of hour ticks, and each day's PEAK height and
+peak score are marked directly on the chart with a dot and their number, rather than
+requiring the reader to hover or cross-reference the table below. (Caught and fixed a real
+bug while building this: the rewritten file initially imported `todayOrTomorrowLabel` from
+the wrong module -- it lives in `dateUtils.js`, not `labels.jsx` -- which would have failed
+the production build; fixed before it ever reached the build step.)
+
+Dead CSS from the prior BeachList/BeachWeek designs (`.beach-row*`, `.beach-list-compact`,
+`.week-day-row*`, `.week-hour-*`, `.wave-chart-ticks`) removed once nothing referenced them
+-- confirmed via grep across all view files before deleting each block, not assumed.
+
+Verified: clean production build, backend suite unaffected (112/112, nothing backend
+touched in this entry), live API shape spot-checked against what the new components
+actually read (`weather_icon`, `weather_label`, `temperature_c` all present and correctly
+typed), and the new CSS classes/Hebrew strings confirmed present in the built bundle. Same
+standing caveat as every frontend entry above: not click-tested in an actual browser.

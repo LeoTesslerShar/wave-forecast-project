@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
-import { FacebookIcon, MoonIcon, SunIcon, WhatsAppIcon, WindArrowIcon } from "../components/Icons.jsx";
+import { FacebookIcon, WeatherIcon, WhatsAppIcon, WindArrowIcon } from "../components/Icons.jsx";
 import { hebrewDateLabel, hoursAtIntervalForDate, localHourLabel, localHourOfDay, todayOrTomorrowLabel } from "../dateUtils.js";
 import { getUserId } from "../identity.js";
 import { Num, PERIOD_HE } from "../labels.jsx";
@@ -180,10 +180,13 @@ export default function BeachDay({ beach, rows, date, onBack }) {
                 const hi = cm(h.size.surf_height_range?.[1]);
                 return (
                   <tr key={h.valid_at} className={isNow ? "day-row-now" : ""}>
-                    <td className="cell-hour">
-                      {isDaytime(h.valid_at) ? <SunIcon /> : <MoonIcon />}
+                    <td className="cell-hour" title={h.weather_label}>
+                      <WeatherIcon iconKey={h.weather_icon} isDay={isDaytime(h.valid_at)} />
                       <span>
                         <Num>{localHourLabel(h.valid_at)}</Num>
+                      </span>
+                      <span className="muted cell-temp">
+                        {h.temperature_c != null ? <Num>{Math.round(h.temperature_c)}°</Num> : "--"}
                       </span>
                     </td>
                     <td>
@@ -230,7 +233,8 @@ export default function BeachDay({ beach, rows, date, onBack }) {
       {dayHours !== null && dayHours.length > 0 && (
         <p className="muted small honesty-note">
           גובה גלישה, ציון, יחס לגוף והמלצת לוחות הם הערכות לא מאומתות של המערכת -- לא
-          מדידה. מהירות וכיוון רוח, גובה סוול ומחזור מגיעים ישירות ממודל התחזית.
+          מדידה. מהירות וכיוון רוח, גובה סוול, מחזור, טמפרטורה ומזג האוויר מגיעים ישירות
+          ממודל התחזית.
         </p>
       )}
     </div>

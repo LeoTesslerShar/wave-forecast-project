@@ -1,17 +1,20 @@
-import { localHourLabel, localDateString } from "../dateUtils.js";
-import { Num } from "../labels.jsx";
+import { localDateString, todayOrTomorrowLabel } from "../dateUtils.js";
 
 const WIDTH = 700;
-const HEIGHT = 140;
-const PAD_TOP = 10;
-const PAD_BOTTOM = 20;
+const HEIGHT = 160;
+const PAD_TOP = 26;
+const PAD_BOTTOM = 8;
 const PAD_SIDE = 4;
 
 /** Dependency-free inline SVG chart -- no charting library added (this project keeps two
  * runtime dependencies on purpose). Two lines sharing one x-axis (hour index): surf height
  * (its own min/max scale) and score (fixed 0..10 scale, so the 0..10 axis always means the
  * same thing chart to chart). Height is drawn first/behind, score drawn on top in the
- * accent colour, since the score is the number the user is scanning for. */
+ * accent colour, since the score is the number the user is scanning for.
+ *
+ * X-axis is labelled by DAY, not hour -- one name centred over each day's own span -- and
+ * each day's peak height and peak score are called out with their number directly on the
+ * chart, rather than making the reader hover or cross-reference a table. */
 export default function WaveChart({ rows }) {
   if (!rows || rows.length < 2) return null;
 
@@ -27,16 +30,27 @@ export default function WaveChart({ rows }) {
   const heightPath = heights.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${yHeight(v).toFixed(1)}`).join(" ");
   const scorePath = scores.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${yScore(v).toFixed(1)}`).join(" ");
 
-  // A day boundary tick every time the local date changes, so the chart reads as "days"
-  // rather than an undifferentiated hourly blur.
-  const dayTicks = [];
-  let lastDate = null;
+  // Group row indices by local calendar day, in order -- gives each day's own x-range for
+  // the label position and the peak search below.
+  const days = [];
   rows.forEach((r, i) => {
     const d = localDateString(r.valid_at);
-    if (d !== lastDate) {
-      dayTicks.push({ i, label: localHourLabel(r.valid_at) });
-      lastDate = d;
+    const last = days[days.length - 1];
+    if (last && last.date === d) {
+      last.end = i;
+    } else {
+      days.push({ date: d, start: i, end: i });
     }
+  });
+
+  const peaks = days.map((day) => {
+    let hi = day.start;
+    let si = day.start;
+    for (let i = day.start; i <= day.end; i++) {
+      if (heights[i] > heights[hi]) hi = i;
+      if (scores[i] > scores[si]) si = i;
+    }
+    return { ...day, heightIdx: hi, scoreIdx: si };
   });
 
   return (
@@ -50,27 +64,66 @@ export default function WaveChart({ rows }) {
         </span>
       </div>
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="wave-chart-svg">
-        {dayTicks.map((t) => (
+        {days.slice(1).map((d) => (
           <line
-            key={t.i}
-            x1={x(t.i)}
-            x2={x(t.i)}
+            key={d.date}
+            x1={x(d.start)}
+            x2={x(d.start)}
             y1={PAD_TOP}
             y2={HEIGHT - PAD_BOTTOM}
             stroke="#e5e7eb"
             strokeWidth="1"
           />
         ))}
+
+        {days.map((d) => (
+          <text
+            key={d.date}
+            x={(x(d.start) + x(d.end)) / 2}
+            y={14}
+            textAnchor="middle"
+            fontSize="11"
+            fontWeight="700"
+            fill="#4b5563"
+          >
+            {todayOrTomorrowLabel(d.date)}
+          </text>
+        ))}
+
         <path d={heightPath} fill="none" stroke="#0a6fb5" strokeWidth="2" opacity="0.55" />
         <path d={scorePath} fill="none" stroke="#166534" strokeWidth="2.5" />
-      </svg>
-      <div className="wave-chart-ticks">
-        {dayTicks.map((t) => (
-          <span key={t.i} className="muted small" style={{ insetInlineStart: `${(x(t.i) / WIDTH) * 100}%` }}>
-            <Num>{t.label}</Num>
-          </span>
+
+        {peaks.map((p) => (
+          <g key={`h-${p.date}`}>
+            <circle cx={x(p.heightIdx)} cy={yHeight(heights[p.heightIdx])} r="2.5" fill="#0a6fb5" />
+            <text
+              x={x(p.heightIdx)}
+              y={yHeight(heights[p.heightIdx]) - 7}
+              textAnchor="middle"
+              fontSize="10"
+              fontWeight="600"
+              fill="#0a6fb5"
+            >
+              {Math.round(heights[p.heightIdx] * 100)}
+            </text>
+          </g>
         ))}
-      </div>
+        {peaks.map((p) => (
+          <g key={`s-${p.date}`}>
+            <circle cx={x(p.scoreIdx)} cy={yScore(scores[p.scoreIdx])} r="2.5" fill="#166534" />
+            <text
+              x={x(p.scoreIdx)}
+              y={yScore(scores[p.scoreIdx]) - 7}
+              textAnchor="middle"
+              fontSize="10"
+              fontWeight="700"
+              fill="#166534"
+            >
+              {scores[p.scoreIdx].toFixed(1)}
+            </text>
+          </g>
+        ))}
+      </svg>
     </div>
   );
 }
