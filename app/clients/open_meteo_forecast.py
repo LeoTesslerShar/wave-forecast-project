@@ -1,6 +1,11 @@
 """Wind from api.open-meteo.com/v1/forecast -- a DIFFERENT endpoint than the marine
 archive; the marine endpoint does not carry 10m wind (docs/DATA_SOURCES.md,
-prompts/phase-1-ingestion.md section 2). Verified working during the Phase 0.5 spike."""
+prompts/phase-1-ingestion.md section 2). Verified working during the Phase 0.5 spike.
+
+Also carries air temperature and WMO weather code from the same request (verified live --
+`temperature_2m`, `weather_code`), added alongside wind rather than as a third upstream
+call since they're already on this endpoint. `weather_code` is the standard WMO 4677 table
+Open-Meteo returns; app/quality/weather.py maps it to a Hebrew sky-condition label."""
 from datetime import UTC, date, datetime
 
 import httpx
@@ -9,7 +14,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 from app.clients.errors import UpstreamError
 from app.settings import get_settings
 
-HOURLY_VARS = ["wind_speed_10m", "wind_direction_10m", "wind_gusts_10m"]
+HOURLY_VARS = ["wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "temperature_2m", "weather_code"]
 
 
 def _retrying(max_retries: int):

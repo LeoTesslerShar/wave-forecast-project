@@ -107,6 +107,7 @@ class QualityConfidence(BaseModel):
     quality_verdict: str = "unvalidated_heuristic"
     body_reference: str = "unvalidated_heuristic"
     board_recommendation: str = "unvalidated_heuristic"
+    weather: str = "measured_forecast"
 
 
 class QualityOut(BaseModel):
@@ -137,6 +138,13 @@ class QualityOut(BaseModel):
     body_reference: str
     # Hebrew labels, best-first, e.g. ["לוח קצר", "לוח ארוך"] -- app/quality/boards.py.
     board_recommendation: list[str]
+    # Air temperature -- MEASURED (forecast.temperature_c, from the same wind request),
+    # not derived. weather_label/weather_icon are app/quality/weather.py's translation of
+    # the raw WMO weather_code -- a standard lookup table, not a judgement-call heuristic,
+    # but still labelled via confidence.weather like everything else on this response.
+    temperature_c: float | None
+    weather_label: str  # Hebrew, e.g. "מעונן חלקית"
+    weather_icon: str  # stable English key for the frontend's icon lookup
     confidence: QualityConfidence
 
 

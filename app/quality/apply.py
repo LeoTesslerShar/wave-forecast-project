@@ -11,6 +11,7 @@ from app.quality.chop import classify_chop
 from app.quality.period import PERIOD_UNCERTAINTY_S, classify_period
 from app.quality.size import classify_size
 from app.quality.verdict import combine
+from app.quality.weather import classify_weather
 from app.quality.wind import classify_wind
 from app.schemas import QualityConfidence, QualityOut, QualityWindOut
 
@@ -47,6 +48,7 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
     # display-only, never used in scoring. See their own modules for the judgement calls.
     body_ref = classify_body_reference(exposure.surf_height_estimate)
     boards = recommend_boards(exposure.surf_height_estimate, period_s)
+    weather = classify_weather(forecast.weather_code)
 
     return QualityOut(
         beach_id=beach.id,
@@ -70,6 +72,9 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
         quality_reasoning=verdict.reasoning,
         body_reference=body_ref.label,
         board_recommendation=boards.boards,
+        temperature_c=forecast.temperature_c,
+        weather_label=weather.label,
+        weather_icon=weather.icon_key,
         confidence=QualityConfidence(
             size="unvalidated_heuristic",
             period=(
@@ -82,5 +87,6 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
             quality_verdict="unvalidated_heuristic",
             body_reference="unvalidated_heuristic",
             board_recommendation="unvalidated_heuristic",
+            weather="measured_forecast",
         ),
     )

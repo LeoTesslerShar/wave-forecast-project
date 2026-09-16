@@ -119,6 +119,8 @@ async def ingest_forecasts_for_beach(
             wind_speed_10m=row.get("wind_speed_10m"),
             wind_direction_10m=row.get("wind_direction_10m"),
             wind_gusts_10m=row.get("wind_gusts_10m"),
+            temperature_c=row.get("temperature_2m"),
+            weather_code=row.get("weather_code"),
             fetched_at=issued_at,
             backfilled=backfilled,
             wave_fetch_failed=wave_failed,

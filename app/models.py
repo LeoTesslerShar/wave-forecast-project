@@ -101,10 +101,15 @@ class Forecast(Base):
     wind_wave_period: Mapped[float | None] = mapped_column(Float, nullable=True)
     wave_source_model: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
-    # --- wind (api.open-meteo.com/v1/forecast) ---
+    # --- wind + weather (api.open-meteo.com/v1/forecast -- same request as wind) ---
     wind_speed_10m: Mapped[float | None] = mapped_column(Float, nullable=True)
     wind_direction_10m: Mapped[float | None] = mapped_column(Float, nullable=True)
     wind_gusts_10m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    temperature_c: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Raw WMO 4677 weather code -- app/quality/weather.py maps it to a Hebrew label/icon.
+    # Stored as the raw code, not the translated label, same discipline as everywhere else
+    # in this schema (store what was measured, translate at the display layer).
+    weather_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # True when a past valid_at was refetched during backfill: the value is "what the

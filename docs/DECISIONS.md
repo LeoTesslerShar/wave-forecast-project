@@ -1087,3 +1087,28 @@ this entry beyond what the previous entry already covered), and a grep across th
 bundle confirming the new Hebrew column headers and CSS classes are actually present.
 **Still not click-tested in an actual browser** -- same caveat as the previous frontend
 entry; no browser automation tool is available in this environment.
+
+## 2026-09-16 -- Added air temperature and sky condition (weather_code)
+
+User request: show temperature and sky condition (sunny/cloudy/partly cloudy) per hour and
+per day. No prior data source for either existed in this project.
+
+Both come from `api.open-meteo.com/v1/forecast` -- the SAME request already used for wind
+(`app/clients/open_meteo_forecast.py`), not a third upstream call. Verified live against
+the real API before wiring anything: `temperature_2m` and `weather_code` are genuinely
+returned alongside `wind_speed_10m` for the same coordinates/hours.
+
+`weather_code` is the standard WMO 4677 code table -- unlike almost every other heuristic
+in this project, translating it (`app/quality/weather.py::classify_weather`) is NOT a
+judgement call with no ground truth; it's a published lookup table. Stored as the raw code
+on `Forecast.weather_code` (new nullable column, no backfill -- same discipline as every
+prior migration touching this table: existing rows genuinely were never fetched with this
+field), translated to a Hebrew label + a stable English `icon_key` only at the
+`QualityOut` response layer. `temperature_c` is equally MEASURED, not derived.
+
+New `QualityOut` fields: `temperature_c`, `weather_label` (Hebrew), `weather_icon` (English
+identifier for the frontend's icon lookup -- kept English for the same reason every other
+identifier in this project is, something to match on, not display). New
+`QualityConfidence.weather`, hardcoded `"measured_forecast"`.
+
+New `tests/test_weather.py`. 112 tests passing.
