@@ -116,19 +116,19 @@ export default function WaveChart({ rows }) {
           </text>
         ))}
 
-        <path d={heightPath} fill="none" stroke="#0a6fb5" strokeWidth="2.5" opacity="0.55" vectorEffect="non-scaling-stroke" />
+        <path d={heightPath} fill="none" stroke="#0d3b66" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
         <path d={scorePath} fill="none" stroke="#166534" strokeWidth="3" vectorEffect="non-scaling-stroke" />
 
         {peaks.map((p) => (
           <g key={`h-${p.date}`}>
-            <circle cx={x(p.heightIdx)} cy={yHeight(heights[p.heightIdx])} r="3" fill="#0a6fb5" vectorEffect="non-scaling-stroke" />
+            <circle cx={x(p.heightIdx)} cy={yHeight(heights[p.heightIdx])} r="3" fill="#0d3b66" vectorEffect="non-scaling-stroke" />
             <text
               x={x(p.heightIdx)}
               y={yHeight(heights[p.heightIdx]) - 9}
               textAnchor="middle"
               fontSize="12"
               fontWeight="600"
-              fill="#0a6fb5"
+              fill="#0d3b66"
             >
               {heights[p.heightIdx].toFixed(2)} מ'
             </text>
