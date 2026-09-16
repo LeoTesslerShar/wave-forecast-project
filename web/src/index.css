@@ -39,6 +39,7 @@ body {
 
 .tabs {
   display: flex;
+  justify-content: center;
   gap: 8px;
   margin-bottom: 20px;
   flex-wrap: wrap;
