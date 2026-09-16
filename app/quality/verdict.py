@@ -26,8 +26,15 @@ not just to the verdict word (docs/DECISIONS.md, "a 0.5m day scored excellent" b
     vary with speed at all above LIGHT_WIND_KMH (app/quality/wind.py) -- a 60 km/h dead-
     offshore gale would otherwise score identically to a 9 km/h breeze.
 
-Both ceiling tables are judgement calls with no ground truth to fit them against, same
-caveat as every other heuristic constant in this project -- see docs/DECISIONS.md.
+Both curves are PIECEWISE-LINEAR interpolations (same idiom as
+app/alerting/calibration.py's BIAS_TABLE interpolation), not discrete step buckets -- a
+first version used flat buckets, which pinned every hour in a wide height/wind range to the
+exact same score (every 0.8-1.2m hour read exactly "7.0"). A real Israeli surfer's own
+calibration anchor -- "a 1m day with light wind is about a 7" -- is preserved as one point
+on SIZE_CEILING's curve, but the curve varies continuously around it, so nearby hours read
+6.8, 7.2, etc. rather than repeating the same number. Both curves are still judgement calls
+with no ground truth to fit them against, same caveat as every other heuristic constant in
+this project -- see docs/DECISIONS.md.
 """
 from dataclasses import dataclass
 
@@ -51,25 +58,46 @@ SCORE_THRESHOLDS = [
     (0.0, "poor"),
 ]
 
+
+def _interpolate(x: float, points: list[tuple[float, float]]) -> float:
+    """Piecewise-linear interpolation through `points` (sorted by x), clamped at both ends
+    -- same idiom as app/alerting/calibration.py's BIAS_TABLE interpolation."""
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    if x <= xs[0]:
+        return ys[0]
+    if x >= xs[-1]:
+        return ys[-1]
+    for i in range(len(xs) - 1):
+        if xs[i] <= x <= xs[i + 1]:
+            frac = (x - xs[i]) / (xs[i + 1] - xs[i])
+            return ys[i] + frac * (ys[i + 1] - ys[i])
+    return ys[-1]  # unreachable, satisfies type checkers
+
+
 # Maximum quality_score (0..10) a given SURF HEIGHT (metres, the displayed breaking-wave
 # number -- app/exposure/apply.py SURF_HEIGHT_FACTOR, NOT the offshore Hs classify_size
 # still uses for its own bands) can reach, regardless of how clean everything else is.
-# (upper_bound_m, ceiling) pairs, checked in order -- first match wins.
-SIZE_CEILING = [
-    (0.5, 2.0),
-    (0.8, 4.0),
-    (1.2, 7.0),
-    (2.0, 10.0),
-    (float("inf"), 8.0),  # past 2m: big enough to be demanding/messy on this coast, not a 10
+# (surf_height_m, ceiling) anchor points -- the 1.0 -> 7.0 point is the stated real-world
+# calibration anchor; the rest are judgement calls interpolated around it.
+SIZE_CEILING_CURVE = [
+    (0.0, 0.0),
+    (0.3, 1.5),
+    (0.5, 3.0),
+    (0.8, 5.0),
+    (1.0, 7.0),
+    (1.3, 8.5),
+    (1.8, 10.0),
+    (2.5, 10.0),
+    (4.0, 8.0),  # past ~2.5m: big enough to be demanding/messy on this coast, not a clean 10
 ]
 
-# Maximum quality_score (0..10) a given wind speed (km/h) + relation_to_shore can reach.
-# Onshore/cross-shore wind blows straight into the wave face and is capped hard; offshore
-# wind grooms the face and is left alone until it gets strong enough to hold waves up too
-# much to ride cleanly. Glassy (<LIGHT_WIND_KMH) is never capped here.
-# (upper_bound_kmh, ceiling) pairs, checked in ascending order -- first match wins.
-WIND_CEILING_ONSHORE = [(12.0, 10.0), (20.0, 6.0), (30.0, 4.0), (float("inf"), 2.0)]
-WIND_CEILING_OFFSHORE = [(35.0, 10.0), (float("inf"), 6.0)]
+# Maximum quality_score (0..10) a given wind speed (km/h) can reach, separate curves for
+# onshore/cross-shore (blows straight into the wave face, capped hard as it strengthens)
+# vs. offshore (grooms the face, left alone until strong enough to hold waves up too much).
+# Glassy (<LIGHT_WIND_KMH) is never capped -- see _wind_ceiling.
+WIND_CEILING_CURVE_ONSHORE = [(0.0, 10.0), (12.0, 10.0), (20.0, 6.0), (30.0, 4.0), (45.0, 2.0), (60.0, 1.0)]
+WIND_CEILING_CURVE_OFFSHORE = [(0.0, 10.0), (35.0, 10.0), (50.0, 6.0), (70.0, 3.0)]
 GUSTY_CEILING_PENALTY = 2.0  # further points subtracted from whichever ceiling applied
 
 
@@ -96,21 +124,14 @@ def _cap(verdict: str, max_label: str) -> str:
 def _size_ceiling(surf_height_m: float | None) -> float:
     if surf_height_m is None:
         return 10.0  # no surf-height data -- don't invent a penalty for a missing number
-    for upper, ceiling in SIZE_CEILING:
-        if surf_height_m < upper:
-            return ceiling
-    return SIZE_CEILING[-1][1]
+    return _interpolate(surf_height_m, SIZE_CEILING_CURVE)
 
 
 def _wind_ceiling(wind: WindQuality) -> float:
     if wind.speed_kmh is None or wind.relation_to_shore == "glassy":
         return 10.0
-    table = WIND_CEILING_OFFSHORE if wind.relation_to_shore == "offshore" else WIND_CEILING_ONSHORE
-    ceiling = 10.0
-    for upper, c in table:
-        if wind.speed_kmh < upper:
-            ceiling = c
-            break
+    curve = WIND_CEILING_CURVE_OFFSHORE if wind.relation_to_shore == "offshore" else WIND_CEILING_CURVE_ONSHORE
+    ceiling = _interpolate(wind.speed_kmh, curve)
     if wind.gusty and ceiling < 10.0:
         ceiling = max(0.0, ceiling - GUSTY_CEILING_PENALTY)
     return ceiling

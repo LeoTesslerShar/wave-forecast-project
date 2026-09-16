@@ -5,6 +5,8 @@ the sub-scorers directly, so the honest-labelling requirement can't be bypassed.
 """
 from app.exposure.apply import build_exposure_estimate
 from app.models import Beach, Forecast
+from app.quality.body_reference import classify_body_reference
+from app.quality.boards import recommend_boards
 from app.quality.chop import classify_chop
 from app.quality.period import PERIOD_UNCERTAINTY_S, classify_period
 from app.quality.size import classify_size
@@ -41,6 +43,11 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
     # even though its underlying Hs might sit in a more generous band. See verdict.py.
     verdict = combine(size_q, period_q, wind_q, chop_q, surf_height_m=exposure.surf_height_estimate)
 
+    # Both derived purely from the already-computed surf height (+ period for boards) --
+    # display-only, never used in scoring. See their own modules for the judgement calls.
+    body_ref = classify_body_reference(exposure.surf_height_estimate)
+    boards = recommend_boards(exposure.surf_height_estimate, period_s)
+
     return QualityOut(
         beach_id=beach.id,
         valid_at=forecast.valid_at,
@@ -48,6 +55,7 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
         period_s=period_s,
         period_band=period_q.band,
         swell_direction_deg=forecast.swell_wave_direction or forecast.wave_direction,
+        swell_height_m=forecast.swell_wave_height,
         wind=QualityWindOut(
             speed_kmh=forecast.wind_speed_10m,
             direction_deg=forecast.wind_direction_10m,
@@ -60,6 +68,8 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
         quality_score=verdict.quality_score,
         quality_verdict=verdict.verdict,
         quality_reasoning=verdict.reasoning,
+        body_reference=body_ref.label,
+        board_recommendation=boards.boards,
         confidence=QualityConfidence(
             size="unvalidated_heuristic",
             period=(
@@ -70,5 +80,7 @@ def build_quality(beach: Beach, forecast: Forecast) -> QualityOut:
             wind="measured_forecast",
             chop="unvalidated_heuristic",
             quality_verdict="unvalidated_heuristic",
+            body_reference="unvalidated_heuristic",
+            board_recommendation="unvalidated_heuristic",
         ),
     )

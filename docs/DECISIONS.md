@@ -970,3 +970,53 @@ browser** -- no browser automation tool was available in this environment; this 
 gap relative to this project's own stated practice of testing UI changes live before
 calling them done, and is worth a manual pass (especially the RTL number-isolation and the
 push permission flow, which cannot be meaningfully verified from the command line at all).
+
+## 2026-09-16 -- Continuous scoring curve, body-reference scale, board recommendation, swell height
+
+User feedback: the score needed to be "better" -- specifically, a real Israeli surfer's own
+calibration ("a 1m day with light wind should be about a 7") and a complaint that scores
+felt too coarse, not varying hour to hour the way real conditions do.
+
+**Root cause of the coarseness**: `SIZE_CEILING`/`WIND_CEILING` (added the previous day)
+were discrete step tables -- every hour in the same bucket (e.g. any surf height from 0.8m
+to 1.2m) clamped to the exact same ceiling value, so a whole range of genuinely different
+hours all read "7.0". Replaced both with piecewise-linear interpolated curves
+(`SIZE_CEILING_CURVE`, `WIND_CEILING_CURVE_ONSHORE/OFFSHORE` in `app/quality/verdict.py`),
+reusing the exact interpolation idiom `app/alerting/calibration.py`'s `BIAS_TABLE` already
+established in this codebase. The user's stated anchor -- 1.0m surf height, light wind ->
+~7/10 -- is now literally one point on the curve (`(1.0, 7.0)` in `SIZE_CEILING_CURVE`),
+verified directly: `combine(..., surf_height_m=1.0)` with glassy wind, workable period and
+clean chop returns exactly `7.0`. Nearby hours now read `6.8`, `7.2`, etc. instead of
+repeating the same clamped number -- no existing test's numeric assertions needed to
+change, since they all used inequalities (`<=`, `>=`) against the ceiling behaviour, not
+exact equality against the old step values.
+
+**Three new derived fields**, all display-only (never fed back into scoring), all operating
+on SURF HEIGHT (the displayed breaking-wave number) rather than the offshore Hs
+`app/quality/size.py`'s own bands are calibrated against -- same split already established
+for the size ceiling:
+
+- **`body_reference`** (`app/quality/body_reference.py`) -- the surf-community "body
+  reference" / Hawaiian scale (קרסול/ankle, ברך/knee, מותניים/waist, ... מעל הראש/overhead).
+  A widely-used convention, not invented here, but the exact metre boundaries between bands
+  are this project's own judgement call, documented as such.
+- **`board_recommendation`** (`app/quality/boards.py`) -- which board types (סופט
+  טופ/soft-top, לוח ארוך/longboard, לוח קצר/shortboard) are realistically rideable, gated on
+  surf height AND period: very small surf excludes shortboards (not enough push to plane);
+  big AND short-period surf excludes longboards (too steep/fast to turn in time), but big
+  AND long-period surf still allows one (more time per wave). Another explicit judgement
+  call, not derived from anything measured.
+- **`swell_height_m`** (new field on `QualityOut`, from `forecast.swell_wave_height`) --
+  unlike the two above, this is MEASURED, not derived: the raw upstream swell-only height,
+  already fetched and stored, simply not previously exposed at the quality-response level.
+  Same rationale as the earlier `swell_direction_deg` addition -- the day-by-day UI needs it
+  and must not derive it client-side from a second fetch-and-join.
+
+`QualityConfidence` gained `body_reference`/`board_recommendation` (both hardcoded
+`"unvalidated_heuristic"`, same guarantee as `size`/`quality_verdict`).
+
+New test file `tests/test_body_reference_and_boards.py`: band monotonicity, half-open
+boundary behaviour (a band's own upper bound belongs to the next band), the short-vs-long
+period longboard distinction at the same height, and the no-data-returns-empty path.
+
+110 tests passing.

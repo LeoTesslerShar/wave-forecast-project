@@ -105,6 +105,8 @@ class QualityConfidence(BaseModel):
     wind: str = "measured_forecast"
     chop: str = "unvalidated_heuristic"
     quality_verdict: str = "unvalidated_heuristic"
+    body_reference: str = "unvalidated_heuristic"
+    board_recommendation: str = "unvalidated_heuristic"
 
 
 class QualityOut(BaseModel):
@@ -121,11 +123,20 @@ class QualityOut(BaseModel):
     # added here so the day-by-day UI doesn't have to fetch and join two endpoints for one
     # field (prompts/phase-5-ui.md section 3, "no client-side derivation of API data").
     swell_direction_deg: float | None
+    # Swell-only height in metres (forecast.swell_wave_height, MEASURED -- the raw upstream
+    # figure, not derived) -- separate from `size`, which is the combined swell+wind-sea
+    # total run through exposure/surf-height conversion. Same rationale as swell_direction_deg.
+    swell_height_m: float | None
     chop_ratio: float | None
     chop_band: str
     quality_score: float  # 0..10 -- see app/quality/verdict.py
     quality_verdict: str  # "flat" | "poor" | "fair" | "good" | "excellent"
     quality_reasoning: str
+    # Hebrew label, e.g. "ברך" (knee) -- app/quality/body_reference.py. Derived from surf
+    # height, unvalidated, display only.
+    body_reference: str
+    # Hebrew labels, best-first, e.g. ["לוח קצר", "לוח ארוך"] -- app/quality/boards.py.
+    board_recommendation: list[str]
     confidence: QualityConfidence
 
 
