@@ -1,17 +1,68 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
-import { ConfidenceBadge, RangedValue, ScoreBadge } from "../components/Badges.jsx";
-import { hoursAtIntervalForDate, localHourLabel, todayOrTomorrowLabel } from "../dateUtils.js";
+import { FacebookIcon, MoonIcon, SunIcon, WhatsAppIcon, WindArrowIcon } from "../components/Icons.jsx";
+import { hebrewDateLabel, hoursAtIntervalForDate, localHourLabel, localHourOfDay, todayOrTomorrowLabel } from "../dateUtils.js";
 import { getUserId } from "../identity.js";
-import { CHOP_HE, Num, PERIOD_HE, WIND_RELATION_HE } from "../labels.jsx";
+import { Num, PERIOD_HE } from "../labels.jsx";
 import { ensurePushRegistered } from "../push.js";
 
-/** One day, one beach, 3-hour intervals -- exactly the fields asked for (wave height, wind
- * speed, swell direction, score) plus a per-slot watch toggle. Tapping a row expands it
- * into the full component breakdown (what SingleBeachBreakdown used to show as the whole
- * view) rather than navigating away. */
+const VERDICT_FILL_CLASS = {
+  flat: "fill-flat",
+  poor: "fill-poor",
+  fair: "fill-fair",
+  good: "fill-good",
+  excellent: "fill-excellent",
+};
+
+/** Rough daytime window for the sun/moon icon -- display only, not a real sunrise/sunset
+ * calculation (this project has no astronomical data source). Reasonable for this
+ * latitude/season without claiming precision it doesn't have. */
+function isDaytime(isoTimestamp) {
+  const h = localHourOfDay(isoTimestamp);
+  return h >= 6 && h < 18;
+}
+
+/** Wind cell colour -- a purely presentational 3-tier bucket (green/orange/red), separate
+ * from and coarser than app/quality/verdict.py's own WIND_CEILING curve, which is what
+ * actually drives the score. This only decides a pill colour. */
+function windPillClass(speedKmh, relation) {
+  if (speedKmh == null) return "wind-calm";
+  if (relation === "offshore" || relation === "glassy") {
+    return speedKmh < 50 ? "wind-calm" : "wind-strong";
+  }
+  if (speedKmh < 12) return "wind-calm";
+  if (speedKmh < 25) return "wind-moderate";
+  return "wind-strong";
+}
+
+function cm(m) {
+  return m == null ? null : Math.round(m * 100);
+}
+
+function shareText(beachName, dateLabel) {
+  return `תחזית גלישה ל${beachName}, ${dateLabel}`;
+}
+
+async function share(beachName, dateLabel) {
+  const text = shareText(beachName, dateLabel);
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: text, url: location.href });
+      return;
+    } catch {
+      /* user cancelled -- fall through to nothing */
+      return;
+    }
+  }
+  window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${location.href}`)}`, "_blank");
+}
+
+/** One day, one beach, 3-hour intervals. Header bar (date + today/tomorrow label + share),
+ * then a 9-column table: hour, wave height (range), score, body-reference, boards, swell
+ * height, period, wind speed, wind direction -- exactly the fields asked for, in that
+ * order. No temperature column: this project has no air-temperature data source, and
+ * showing one would mean inventing a number (hard rule 1 forbids it). */
 export default function BeachDay({ beach, rows, date, onBack }) {
-  const [expanded, setExpanded] = useState(null); // valid_at of the expanded row
   const [watches, setWatches] = useState(null); // valid_at -> watch row, for THIS beach
   const [busyValidAt, setBusyValidAt] = useState(null);
   const [watchError, setWatchError] = useState(null);
@@ -35,6 +86,7 @@ export default function BeachDay({ beach, rows, date, onBack }) {
   if (!beach) return <p className="muted">טוען...</p>;
 
   const dayHours = rows === null ? null : hoursAtIntervalForDate(rows, date);
+  const nowIso = new Date().toISOString();
 
   async function toggleWatch(hour) {
     setWatchError(null);
@@ -64,124 +116,123 @@ export default function BeachDay({ beach, rows, date, onBack }) {
     }
   }
 
+  const beachName = beach.name_he || beach.name;
+  const dateLabel = todayOrTomorrowLabel(date);
+
   return (
     <div>
       <button className="back-link" onClick={onBack}>
         &rlm;&larr; חזרה לשבוע
       </button>
-      <h2>
-        {beach.name_he || beach.name} · {todayOrTomorrowLabel(date)}
-      </h2>
+
+      <div className="day-header-bar">
+        <div className="day-header-date">
+          <h2>
+            {beachName} · {dateLabel}
+          </h2>
+          <span className="muted small">
+            <Num>{hebrewDateLabel(date)}</Num>
+          </span>
+        </div>
+        <div className="day-header-share">
+          <span className="muted small">שתף</span>
+          <button className="icon-btn" onClick={() => share(beachName, dateLabel)} title="שתף בוואטסאפ">
+            <WhatsAppIcon />
+          </button>
+          <button
+            className="icon-btn"
+            onClick={() =>
+              window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(location.href)}`, "_blank")
+            }
+            title="שתף בפייסבוק"
+          >
+            <FacebookIcon />
+          </button>
+        </div>
+      </div>
 
       {watchError && <p className="error">{watchError}</p>}
       {dayHours === null && <p className="muted">טוען תחזית...</p>}
       {dayHours !== null && dayHours.length === 0 && <p className="muted">אין תחזית ליום זה.</p>}
 
-      <div className="day-list">
-        {dayHours?.map((h) => {
-          const watch = watches?.[h.valid_at];
-          const isExpanded = expanded === h.valid_at;
-          return (
-            <div className="day-row-wrap" key={h.valid_at}>
-              <button className="day-row" onClick={() => setExpanded(isExpanded ? null : h.valid_at)}>
-                <span className="day-row-time">
-                  <Num>{localHourLabel(h.valid_at)}</Num>
-                </span>
-                <span className="day-row-height">
-                  {h.size.surf_height_estimate != null ? (
-                    <Num>{h.size.surf_height_estimate.toFixed(2)}מ'</Num>
-                  ) : (
-                    "--"
-                  )}
-                </span>
-                <span className="day-row-wind muted">
-                  {h.wind.speed_kmh != null ? <Num>{h.wind.speed_kmh.toFixed(0)} קמ"ש</Num> : "--"}
-                </span>
-                <span className="day-row-swell muted">
-                  {h.swell_direction_deg != null ? <Num>{h.swell_direction_deg.toFixed(0)}°</Num> : "--"}
-                </span>
-                <ScoreBadge score={h.quality_score} verdict={h.quality_verdict} />
-              </button>
-              <button
-                className={watch ? "watch-btn watching" : "watch-btn"}
-                onClick={() => toggleWatch(h)}
-                disabled={busyValidAt === h.valid_at}
-              >
-                {busyValidAt === h.valid_at ? "..." : watch ? "צופה ✓" : "התרע לי"}
-              </button>
+      {dayHours !== null && dayHours.length > 0 && (
+        <div className="day-table-scroll">
+          <table className="day-table">
+            <thead>
+              <tr>
+                <th>שעה</th>
+                <th>גובה גלישה</th>
+                <th>ציון</th>
+                <th>יחס לגוף</th>
+                <th>לוחות</th>
+                <th>גובה סוול</th>
+                <th>מחזור</th>
+                <th>מהירות רוח</th>
+                <th>כיוון רוח</th>
+                <th>מעקב</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dayHours.map((h, i) => {
+                const isNow = h.valid_at <= nowIso && (i === dayHours.length - 1 || dayHours[i + 1].valid_at > nowIso);
+                const watch = watches?.[h.valid_at];
+                const lo = cm(h.size.surf_height_range?.[0]);
+                const hi = cm(h.size.surf_height_range?.[1]);
+                return (
+                  <tr key={h.valid_at} className={isNow ? "day-row-now" : ""}>
+                    <td className="cell-hour">
+                      {isDaytime(h.valid_at) ? <SunIcon /> : <MoonIcon />}
+                      <span>
+                        <Num>{localHourLabel(h.valid_at)}</Num>
+                      </span>
+                    </td>
+                    <td>
+                      <span className="pill pill-blue">
+                        {lo != null && hi != null ? <Num>{lo}-{hi} ס"מ</Num> : "--"}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`pill score-fill ${VERDICT_FILL_CLASS[h.quality_verdict] || ""}`}>
+                        <Num>{h.quality_score.toFixed(1)}</Num>
+                      </span>
+                    </td>
+                    <td>{h.body_reference}</td>
+                    <td className="cell-boards">{h.board_recommendation.join(" / ") || "--"}</td>
+                    <td>{h.swell_height_m != null ? <Num>{h.swell_height_m.toFixed(2)} מ'</Num> : "--"}</td>
+                    <td>
+                      {h.period_s != null ? <Num>{h.period_s.toFixed(1)} שנ'</Num> : "--"} (
+                      {PERIOD_HE[h.period_band] || h.period_band})
+                    </td>
+                    <td>
+                      <span className={`pill wind-pill ${windPillClass(h.wind.speed_kmh, h.wind.relation_to_shore)}`}>
+                        <WindArrowIcon directionDeg={h.wind.direction_deg} />
+                        <Num>{h.wind.speed_kmh != null ? h.wind.speed_kmh.toFixed(0) : "--"} קמ"ש</Num>
+                      </span>
+                    </td>
+                    <td>{h.wind.direction_deg != null ? <Num>{h.wind.direction_deg.toFixed(0)}°</Num> : "--"}</td>
+                    <td>
+                      <button
+                        className={watch ? "watch-btn watching" : "watch-btn"}
+                        onClick={() => toggleWatch(h)}
+                        disabled={busyValidAt === h.valid_at}
+                      >
+                        {busyValidAt === h.valid_at ? "..." : watch ? "צופה ✓" : "התרע לי"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-              {isExpanded && (
-                <div className="breakdown-card day-row-detail">
-                  <p className="reasoning">{h.quality_reasoning}</p>
-                  <table className="breakdown-table">
-                    <tbody>
-                      <tr>
-                        <th>גובה (גובה גלישה)</th>
-                        <td>
-                          <RangedValue
-                            estimate={h.size.surf_height_estimate}
-                            range={h.size.surf_height_range}
-                            confidence={h.size.confidence.surf_height}
-                          />
-                        </td>
-                      </tr>
-                      <tr>
-                        <th>גובה מובהק (ים פתוח)</th>
-                        <td>
-                          {h.size.components.offshore_raw != null ? (
-                            <Num>{h.size.components.offshore_raw.toFixed(2)}מ'</Num>
-                          ) : (
-                            "אין נתונים"
-                          )}
-                          <ConfidenceBadge confidence={h.size.confidence.offshore_raw} />
-                        </td>
-                      </tr>
-                      <tr>
-                        <th>בסיס חשיפה</th>
-                        <td className="muted">{h.size.exposure_basis}</td>
-                      </tr>
-                      <tr>
-                        <th>מחזור</th>
-                        <td>
-                          {h.period_s != null ? <Num>{h.period_s.toFixed(1)} שנ'</Num> : "אין נתונים"} (
-                          {PERIOD_HE[h.period_band] || h.period_band})
-                          <ConfidenceBadge confidence={h.confidence.period} />
-                        </td>
-                      </tr>
-                      <tr>
-                        <th>רוח</th>
-                        <td>
-                          {h.wind.speed_kmh != null ? (
-                            <>
-                              <Num>
-                                {h.wind.speed_kmh.toFixed(0)} קמ"ש מ-{h.wind.direction_deg?.toFixed(0)}°
-                              </Num>{" "}
-                              ({WIND_RELATION_HE[h.wind.relation_to_shore] || h.wind.relation_to_shore}
-                              {h.wind.gusty ? ", משתנה" : ""}), משבים{" "}
-                              <Num>{h.wind.gusts_kmh?.toFixed(0)} קמ"ש</Num>
-                            </>
-                          ) : (
-                            "אין נתונים"
-                          )}
-                          <ConfidenceBadge confidence={h.confidence.wind} />
-                        </td>
-                      </tr>
-                      <tr>
-                        <th>יחס גלישה</th>
-                        <td>
-                          {h.chop_ratio != null ? h.chop_ratio.toFixed(2) : "אין נתונים"} (
-                          {CHOP_HE[h.chop_band] || h.chop_band})
-                          <ConfidenceBadge confidence={h.confidence.chop} />
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      {dayHours !== null && dayHours.length > 0 && (
+        <p className="muted small honesty-note">
+          גובה גלישה, ציון, יחס לגוף והמלצת לוחות הם הערכות לא מאומתות של המערכת -- לא
+          מדידה. מהירות וכיוון רוח, גובה סוול ומחזור מגיעים ישירות ממודל התחזית.
+        </p>
+      )}
     </div>
   );
 }

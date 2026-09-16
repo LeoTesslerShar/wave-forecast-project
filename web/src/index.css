@@ -27,7 +27,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans Hebrew", "Arial Hebrew", Arial, sans-serif;
+  font-family: "Heebo", -apple-system, "Segoe UI", Roboto, "Noto Sans Hebrew", "Arial Hebrew", Arial, sans-serif;
 }
 
 .app {
@@ -201,132 +201,29 @@ body {
   font-size: 0.85rem;
 }
 
-.week-list,
-.day-list {
+.week-list {
   display: grid;
   gap: 6px;
 }
 
-.week-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  cursor: pointer;
-  text-align: start;
-  font-size: 0.9rem;
-  color: var(--text);
-}
-
-.week-row:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.week-row-date {
-  font-weight: 600;
-  flex: 1 1 auto;
-}
-
-.day-row-wrap {
-  display: grid;
-  gap: 0;
-}
-
-.day-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 8px 8px 0 0;
-  padding: 10px 14px;
-  cursor: pointer;
-  text-align: start;
-  font-size: 0.9rem;
-  color: var(--text);
-}
-
-.day-row-wrap:has(.day-row-detail) .day-row,
-.day-row-wrap:has(.watch-btn) .day-row {
-  border-radius: 8px 8px 0 0;
-}
-
-.day-row-time {
-  font-weight: 600;
-  flex: 0 0 4.5em;
-}
-
-.day-row-height,
-.day-row-wind,
-.day-row-swell {
-  flex: 1 1 auto;
-  font-size: 0.85rem;
-}
-
 .watch-btn {
-  display: block;
-  width: 100%;
-  border-radius: 0 0 8px 8px;
-  border: 1px solid var(--border);
-  border-top: none;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
   background: var(--card);
   color: var(--accent);
-  font-size: 0.8rem;
-  padding: 6px;
+  font-size: 0.75rem;
+  padding: 4px 10px;
 }
 
 .watch-btn.watching {
   color: var(--measured);
   background: var(--measured-bg);
+  border-color: var(--measured);
 }
 
-.day-row-detail {
-  border-radius: 0;
-  border-top: none;
-  margin-bottom: 6px;
-  max-width: none;
-}
-
-.breakdown-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 18px 20px;
-  max-width: 560px;
-}
-
-.reasoning {
-  color: var(--muted);
-  font-size: 0.9rem;
-  margin: 0 0 14px;
-}
-
-.breakdown-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.breakdown-table th {
-  text-align: start; /* was left */
-  color: var(--muted);
-  font-weight: 500;
-  padding-block: 6px;
-  padding-inline: 0 10px; /* was "6px 10px 6px 0" -- the gap must trail th, in either direction */
-  vertical-align: top;
-  width: 130px;
-  font-size: 0.85rem;
-}
-
-.breakdown-table td {
-  padding: 6px 0;
-  border-top: 1px solid var(--border);
-  font-size: 0.9rem;
+.honesty-note {
+  margin-top: 10px;
+  line-height: 1.5;
 }
 
 .subscription-view {
@@ -430,4 +327,233 @@ button:disabled {
   border-color: #b91c1c;
   font-size: 0.8rem;
   padding: 4px 8px;
+}
+
+/* ---- day-view header bar, share buttons ---- */
+
+.day-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.day-header-date h2 {
+  margin: 0 0 2px;
+}
+
+.day-header-share {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  padding: 2px;
+  border-radius: 6px;
+  line-height: 0;
+}
+
+.icon-btn:hover {
+  background: var(--bg);
+}
+
+/* ---- day table: pills per column, per user spec ---- */
+
+.day-table-scroll {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.day-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+  font-size: 0.85rem;
+  min-width: 720px;
+}
+
+.day-table thead th {
+  background: #f0f1f3;
+  color: #4b5563;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.day-table tbody td {
+  padding: 8px 6px;
+  border-bottom: 1px solid #eef0f2;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.day-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.day-row-now {
+  background: #fafbfd;
+  font-weight: 700;
+}
+
+.cell-hour {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.cell-boards {
+  font-size: 0.78rem;
+}
+
+/* Pills -- rounded, solid-fill cells (height, score, wind) per the reference design. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pill-blue {
+  background: var(--accent);
+  color: white;
+}
+
+.score-fill {
+  color: white;
+  min-width: 2.6em;
+}
+
+.fill-flat { background: #9ca3af; }
+.fill-poor { background: #dc2626; }
+.fill-fair { background: #f59e0b; }
+.fill-good { background: #2563eb; }
+.fill-excellent { background: #16a34a; }
+
+.wind-pill {
+  color: white;
+}
+
+.wind-calm { background: #16a34a; }
+.wind-moderate { background: #f59e0b; }
+.wind-strong { background: #dc2626; }
+
+.chop-note {
+  margin-top: 10px;
+}
+
+/* ---- week view: chart + per-day hour strips ---- */
+
+.wave-chart {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px 4px;
+  margin-bottom: 16px;
+}
+
+.wave-chart-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.wave-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wave-chart-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.wave-chart-swatch-height { background: #0a6fb5; opacity: 0.55; }
+.wave-chart-swatch-score { background: #166534; }
+
+.wave-chart-svg {
+  width: 100%;
+  height: 140px;
+  display: block;
+}
+
+.wave-chart-ticks {
+  position: relative;
+  height: 16px;
+}
+
+.wave-chart-ticks span {
+  position: absolute;
+  transform: translateX(50%);
+}
+
+.week-day-row {
+  display: block;
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.week-day-row-label {
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+}
+
+.week-day-row-strip {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.week-hour-cell {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 44px;
+  padding: 4px 2px;
+}
+
+.week-hour-icon {
+  line-height: 0;
+}
+
+.week-hour-time {
+  font-size: 0.7rem;
+}
+
+.week-hour-score {
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: white;
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.week-hour-height {
+  font-size: 0.7rem;
 }

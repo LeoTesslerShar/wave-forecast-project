@@ -1020,3 +1020,70 @@ boundary behaviour (a band's own upper bound belongs to the next band), the shor
 period longboard distinction at the same height, and the no-data-returns-empty path.
 
 110 tests passing.
+
+## 2026-09-16 -- Day-view redesign: pill-styled 9-column table, week strip, height chart
+
+User provided a reference screenshot (a real Israeli surf site's compact daily table) plus
+detailed text specs for two things: (1) a compact per-day style (colour-pill wind/height
+cells, sun/moon icons) as a general visual reference, and (2) an explicit 9-column layout
+for the EXPANDED single-day view, which supersedes the compact style where they conflict --
+the user's own follow-up message clarified this ("the picture is for design reference").
+
+**`BeachDay.jsx`** rebuilt around a `<table>` with columns, right-to-left reading order,
+exactly as specified: hour, wave height (range, not the single estimate -- explicit user
+correction), score, body reference, board recommendation, swell height, period, wind speed,
+wind direction. A 10th `מעקב` (watch) column was added beyond the user's 9 -- the per-slot
+watch toggle from the previous day's work still needed a home, and a table row was the
+natural place for it. Styling per the reference: wind and score cells are solid colour-fill
+pills (wind: green/orange/red 3-tier bucket on speed+relation, a purely presentational
+categorisation separate from and coarser than `app/quality/verdict.py`'s actual
+`WIND_CEILING` curve; score: filled with the same verdict colour ladder used elsewhere,
+per the explicit "fill with the score's colour" ask); height is a solid blue pill showing
+the range in **centimetres** (the reference photo's own convention, "40-70 ס״מ") rather
+than the metres used everywhere else in the app; hour cells show a sun or moon icon (a
+rough 06:00-18:00 daytime window, NOT a real sunrise/sunset calculation -- this project has
+no astronomical data source, and a precise-looking icon for an approximate window would be
+its own small dishonesty).
+
+**No temperature column**, unlike the reference photo. This project has no air-temperature
+data source anywhere in the ingestion pipeline -- showing a number would mean inventing one,
+which hard rule 1 forbids outright. Flagged here rather than silently dropped.
+
+**Confidence badges were about to be lost, caught before committing**: the reference
+design's clean pill table has no room for a per-cell "estimate"/"measured" badge the way
+the old detail table did, but dropping that distinction entirely would violate this
+project's standing rule that every heuristic number stays visually distinct from a measured
+one. Replaced per-cell badges with a single explanatory line under the table naming which
+columns are estimates (surf height, score, body reference, boards) vs. which come straight
+from the forecast model (wind, swell height, period) -- preserves the honesty requirement's
+intent without cluttering the requested design.
+
+**`BeachWeek.jsx`** -- each day is now a horizontal strip of the day's 3-hour slots (sun/
+moon icon, hour, **score directly after the hour** per the user's explicit ordering ask,
+then height), not a single daily summary number, so a day's shape is visible before
+drilling in. The strip shows a single height estimate per slot, not a range -- unlike
+`BeachDay`'s table, there isn't room for a range in a ~44px mini-cell; this is a scope
+compromise, noted rather than silently made.
+
+**New `WaveChart.jsx`** -- a dependency-free inline SVG line chart (surf height and score
+over the visible week), added at the top of the beach page per the request for "a graph of
+just the waves height and score." No charting library added, consistent with this project's
+deliberately minimal dependency list.
+
+**New `Icons.jsx`** -- sun, moon, a wind arrow (rotated via CSS transform from the wind's
+"from" bearing, pointed the intuitive way the wind is blowing toward), and Facebook/
+WhatsApp share icons, all inline SVG, no icon library. Share buttons use the Web Share API
+where available, falling back to a WhatsApp deep link.
+
+**Google Fonts Heebo** added (`index.html`, `preconnect` + stylesheet link, within this
+project's CDN/font allowlist), set as the primary font in `index.css`.
+
+Dead CSS from the previous day-view design (`.day-row`, `.day-row-wrap`, `.breakdown-card`,
+`.breakdown-table`, `.reasoning`, `.week-row` and related) removed rather than left behind
+once nothing referenced them.
+
+Verified: clean production `vite build`, backend suite still 110/110 (no backend touched in
+this entry beyond what the previous entry already covered), and a grep across the built
+bundle confirming the new Hebrew column headers and CSS classes are actually present.
+**Still not click-tested in an actual browser** -- same caveat as the previous frontend
+entry; no browser automation tool is available in this environment.
