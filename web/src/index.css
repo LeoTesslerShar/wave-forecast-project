@@ -36,15 +36,6 @@ body {
   padding: 16px;
 }
 
-.app-header h1 {
-  margin: 0 0 4px;
-}
-
-.tagline {
-  color: var(--muted);
-  font-size: 0.9rem;
-  margin: 0 0 16px;
-}
 
 .tabs {
   display: flex;

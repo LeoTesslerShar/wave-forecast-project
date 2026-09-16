@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
+import WaveHero from "./components/WaveHero.jsx";
 import BeachDay from "./views/BeachDay.jsx";
 import BeachList from "./views/BeachList.jsx";
 import BeachWeek from "./views/BeachWeek.jsx";
@@ -83,8 +84,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>התראות גלישה</h1>
-        <p className="tagline">בלי ניחושים. תדעו בדיוק איפה שווה לגלוש היום.</p>
+        <WaveHero title="התראות גלישה" subtitle="בלי ניחושים. תדעו בדיוק איפה שווה לגלוש היום." />
         <nav className="tabs">
           {TABS.map((t) => (
             <button
