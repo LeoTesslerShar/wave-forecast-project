@@ -130,7 +130,7 @@ export default function WaveChart({ rows }) {
               fontWeight="600"
               fill="#0a6fb5"
             >
-              {Math.round(heights[p.heightIdx] * 100)}
+              {heights[p.heightIdx].toFixed(2)} מ'
             </text>
           </g>
         ))}
