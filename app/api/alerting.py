@@ -34,6 +34,7 @@ async def create_subscription(
     sub = Subscription(
         user_id=body.user_id,
         beach_id=body.beach_id,
+        email=body.email,
         min_height=body.min_height,
         max_height=body.max_height,
         swell_dir_min=body.swell_dir_min,
@@ -146,6 +147,7 @@ async def create_slot_watch(body: SlotWatchCreate, session: AsyncSession = Depen
     watch = SlotWatch(
         user_id=body.user_id,
         beach_id=body.beach_id,
+        email=body.email,
         valid_at=body.valid_at,
         watch_from=watch_from_for(body.valid_at),
         status="pending",

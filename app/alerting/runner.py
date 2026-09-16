@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.alerting.calibration import describe_operating_point
+from app.alerting.email import send_email
 from app.alerting.matching import best_cluster, cluster_qualifying_hours, hour_qualifies
 from app.alerting.material_change import Snapshot, is_material_change
 from app.alerting.notification import build_payload
@@ -143,8 +144,30 @@ async def evaluate_subscription_for_date(
         }
 
     await deliver_to_user(session, sub.user_id, payload)
+    if sub.email:
+        send_email(sub.email, payload["title"], _email_body(payload))
     log_event(logger, logging.INFO, "alert action taken", subscription_id=sub.id, target_date=str(target_date), kind=kind)
     return kind
+
+
+def _email_body(payload: dict) -> str:
+    """Plain-text email body from the same payload the push notification uses -- one
+    source of truth for what an alert says, not a second copy of the wording. Payload
+    shape varies (a full build_payload() dict for alert/update, a smaller inline dict for
+    a cancellation, module-level above) -- every field here is read defensively."""
+    lines = [payload["title"], ""]
+    if payload.get("quality_verdict"):
+        lines.append(f"מצב: {payload['quality_verdict']}")
+    if payload.get("quality_score") is not None:
+        lines.append(f"ציון: {payload['quality_score']:.1f}/10")
+    if payload.get("height_range_m"):
+        lo, hi = payload["height_range_m"]
+        lines.append(f"טווח גובה: {lo:.2f}-{hi:.2f} מ'")
+    if payload.get("calibration_note"):
+        lines += ["", payload["calibration_note"]]
+    if payload.get("honesty_marker"):
+        lines += ["", payload["honesty_marker"]]
+    return "\n".join(lines)
 
 
 async def deliver_to_user(session: AsyncSession, user_id: str, payload: dict) -> None:

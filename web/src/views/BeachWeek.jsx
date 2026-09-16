@@ -1,6 +1,7 @@
 import WaveChart from "../components/WaveChart.jsx";
+import WaveHero from "../components/WaveHero.jsx";
 import { WeatherIcon, WindArrowIcon } from "../components/Icons.jsx";
-import { bestHourForDate, hoursAtIntervalForDate, localHourOfDay, nextLocalDates, todayOrTomorrowLabel } from "../dateUtils.js";
+import { bestHourForDate, hebrewDateLabel, hoursAtIntervalForDate, localHourOfDay, nextLocalDates, todayLocalDateString, todayOrTomorrowLabel } from "../dateUtils.js";
 import { Num } from "../labels.jsx";
 
 const VERDICT_FILL_CLASS = {
@@ -38,7 +39,7 @@ export default function BeachWeek({ beach, rows, onSelectDay, onBack }) {
       <button className="back-link" onClick={onBack}>
         &rlm;&larr; חזרה לרשימה
       </button>
-      <h2>{beach.name_he || beach.name}</h2>
+      <WaveHero title={beach.name_he || beach.name} subtitle={hebrewDateLabel(todayLocalDateString())} />
 
       {rows === null && <p className="muted">טוען תחזית...</p>}
 

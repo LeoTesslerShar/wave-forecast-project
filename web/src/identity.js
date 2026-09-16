@@ -25,3 +25,26 @@ export function getUserId() {
     return memoryFallback;
   }
 }
+
+// An OPTIONAL email address -- a second, opt-in alert delivery channel alongside Web Push
+// (app/alerting/email.py). Unlike getUserId(), this has no default: absent means "push
+// only", and every new subscription/watch reads it fresh rather than caching it, so
+// setting it once in the Alerts tab applies to alerts created afterward.
+const EMAIL_KEY = "surf_alert_user_email";
+
+export function getUserEmail() {
+  try {
+    return localStorage.getItem(EMAIL_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function setUserEmail(email) {
+  try {
+    if (email) localStorage.setItem(EMAIL_KEY, email);
+    else localStorage.removeItem(EMAIL_KEY);
+  } catch {
+    /* localStorage unavailable -- the email just won't persist across visits */
+  }
+}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { localHourLabel } from "../dateUtils.js";
-import { getUserId } from "../identity.js";
+import { getUserEmail, getUserId, setUserEmail } from "../identity.js";
 import { Num } from "../labels.jsx";
 
 const OPERATING_POINTS = [
@@ -16,6 +16,7 @@ const OPERATING_POINTS = [
 export default function SubscriptionForm() {
   const [beaches, setBeaches] = useState([]);
   const [userId] = useState(getUserId());
+  const [email, setEmail] = useState(getUserEmail());
   const [beachId, setBeachId] = useState("");
   const [minHeight, setMinHeight] = useState("1.0");
   const [maxHeight, setMaxHeight] = useState("");
@@ -66,6 +67,7 @@ export default function SubscriptionForm() {
       const body = {
         user_id: userId,
         beach_id: beachId,
+        email: email || null,
         min_height: minHeight === "" ? null : Number(minHeight),
         max_height: maxHeight === "" ? null : Number(maxHeight),
         time_window_start: `${windowStart}:00`,
@@ -95,6 +97,23 @@ export default function SubscriptionForm() {
   return (
     <div className="subscription-view">
       <form className="subscription-form" onSubmit={handleSubmit}>
+        <label>
+          אימייל להתראות (לא חובה)
+          <input
+            type="email"
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setUserEmail(e.target.value);
+            }}
+          />
+        </label>
+        <p className="muted small">
+          בלי אימייל תגיעו רק התראות דחיפה בדפדפן. אם תמלאו אימייל, הוא יחול על המנוי הזה
+          ועל כל מעקב שעה שתיצרו מעכשיו בעמוד של יום ספציפי.
+        </p>
+
         <label>
           חוף
           <select value={beachId} onChange={(e) => setBeachId(e.target.value)}>

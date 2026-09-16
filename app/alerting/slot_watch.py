@@ -20,6 +20,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.alerting.email import send_email
 from app.alerting.runner import deliver_to_user
 from app.alerting.timewindow import local_hour_label
 from app.logging_utils import log_event
@@ -85,6 +86,36 @@ async def _quality_for_slot(session: AsyncSession, beach: Beach, valid_at: datet
     return build_quality(beach, forecasts[0])
 
 
+def _email_body(payload: dict) -> str:
+    """Plain-text email body from the same payload the push notification uses -- one
+    source of truth for what a watch says when it fires, not a second copy of the wording."""
+    lines = [
+        payload["title"],
+        "",
+        payload["quality_reasoning"],
+        "",
+        f"ציון: {payload['quality_score']:.1f}/10",
+    ]
+    size = payload.get("size") or {}
+    if size.get("surf_height_estimate") is not None:
+        lines.append(f"גובה גלישה: {size['surf_height_estimate']:.2f} מ'")
+    wind = payload.get("wind") or {}
+    if wind.get("speed_kmh") is not None:
+        lines.append(f"רוח: {wind['speed_kmh']:.0f} קמ\"ש")
+    lines += ["", payload["honesty_marker"]]
+    return "\n".join(lines)
+
+
+async def _deliver(session: AsyncSession, watch: SlotWatch, payload: dict) -> None:
+    """Both channels: push always attempted (via the user's registered devices, if any),
+    email only when the watch itself carries one -- opt-in per watch, not a fallback for a
+    missing push subscription. A missing/unconfigured channel degrades silently on its own
+    side (app/alerting/push.py, app/alerting/email.py) rather than failing this call."""
+    await deliver_to_user(session, watch.user_id, payload)
+    if watch.email:
+        send_email(watch.email, payload["title"], _email_body(payload))
+
+
 async def _evaluate_one(session: AsyncSession, watch: SlotWatch, *, now_utc: datetime) -> str:
     """Returns the action taken: 'alerted' | 'cancelled' | 'expired' | 'none'."""
     if watch.valid_at <= now_utc:
@@ -109,7 +140,7 @@ async def _evaluate_one(session: AsyncSession, watch: SlotWatch, *, now_utc: dat
         watch.alerted_at = now_utc
         watch.conditions_snapshot = _snapshot(quality)
         await session.commit()
-        await deliver_to_user(session, watch.user_id, _build_payload(beach, watch, quality, kind="alert"))
+        await _deliver(session, watch, _build_payload(beach, watch, quality, kind="alert"))
         return "alerted"
 
     # status == "alerted": watch for it falling back below the bar.
@@ -118,7 +149,7 @@ async def _evaluate_one(session: AsyncSession, watch: SlotWatch, *, now_utc: dat
     watch.status = "cancelled"
     watch.conditions_snapshot = _snapshot(quality)
     await session.commit()
-    await deliver_to_user(session, watch.user_id, _build_payload(beach, watch, quality, kind="cancellation"))
+    await _deliver(session, watch, _build_payload(beach, watch, quality, kind="cancellation"))
     return "cancelled"
 
 

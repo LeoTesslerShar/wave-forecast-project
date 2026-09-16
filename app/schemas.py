@@ -178,6 +178,9 @@ class SubscriptionCreate(BaseModel):
 
     user_id: str
     beach_id: str
+    # Optional second delivery channel alongside Web Push (app/alerting/email.py) -- opt-in,
+    # not a global account setting. Null means push only.
+    email: str | None = None
     min_height: float | None = None
     max_height: float | None = None
     swell_dir_min: float | None = None
@@ -220,6 +223,7 @@ class SubscriptionOut(BaseModel):
     id: int
     user_id: str
     beach_id: str
+    email: str | None
     min_height: float | None
     max_height: float | None
     swell_dir_min: float | None
@@ -265,6 +269,9 @@ class SlotWatchCreate(BaseModel):
 
     user_id: str
     beach_id: str
+    # Optional second delivery channel alongside Web Push (app/alerting/email.py) -- opt-in,
+    # not a global account setting. Null means push only.
+    email: str | None = None
     valid_at: datetime
 
     @field_validator("valid_at")
@@ -279,6 +286,7 @@ class SlotWatchOut(BaseModel):
     id: int
     user_id: str
     beach_id: str
+    email: str | None
     valid_at: datetime
     watch_from: datetime
     status: str  # "pending" | "alerted" | "cancelled" | "expired"

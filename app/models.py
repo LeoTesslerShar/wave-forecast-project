@@ -175,6 +175,10 @@ class Subscription(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     beach_id: Mapped[str] = mapped_column(ForeignKey("beaches.id"), nullable=False)
+    # Optional second delivery channel alongside Web Push (app/alerting/email.py) -- opt-in
+    # per subscription, not a global account setting, since this project has no real user
+    # accounts (just the opaque user_id above). Null means "push only".
+    email: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     min_height: Mapped[float | None] = mapped_column(Float, nullable=True)
     max_height: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -265,6 +269,9 @@ class SlotWatch(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     beach_id: Mapped[str] = mapped_column(ForeignKey("beaches.id"), nullable=False)
+    # Optional second delivery channel alongside Web Push (app/alerting/email.py) -- opt-in
+    # per watch. Null means "push only".
+    email: Mapped[str | None] = mapped_column(String(256), nullable=True)
     valid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     watch_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

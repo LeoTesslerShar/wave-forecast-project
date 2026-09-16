@@ -48,6 +48,17 @@ class Settings(BaseSettings):
     vapid_private_key: str = Field(default="")
     vapid_claims_email: str = Field(default="admin@example.com")
 
+    # Email delivery (a second alert channel alongside Web Push, opt-in per subscription/
+    # watch). STARTTLS on port 587 -- the Gmail "app password" convention: generate a
+    # 16-character app password in your Google account, no OAuth/API-key signup needed.
+    # Blank by default; a missing smtp_password degrades to "computed but not delivered"
+    # (app/alerting/email.py), same as blank VAPID keys do for push, per hard rule 7.
+    smtp_host: str = Field(default="smtp.gmail.com")
+    smtp_port: int = Field(default=587)
+    smtp_user: str = Field(default="")
+    smtp_password: str = Field(default="")
+    smtp_from: str = Field(default="")  # falls back to smtp_user if blank
+
     alert_evaluation_days_ahead: int = Field(
         default=3, description="How many local calendar days ahead to evaluate subscriptions for."
     )

@@ -1215,3 +1215,73 @@ frontend build. Same standing caveat as every frontend entry above: not click-te
 actual browser, including the RTL chart mirror and the bidi fix -- both are exactly the
 kind of thing that's easy to get subtly wrong without visual confirmation, so these are
 worth a deliberate look before trusting them fully.
+
+## 2026-09-16 -- Humor sentence rewrite, chart headroom, wave-hero banner, email alerts
+
+**Day-summary humor rewritten and deduplicated.** User feedback: the sentence was weak,
+and repeated the same clause three times (morning/noon/evening) whenever they shared a
+verdict. `web/src/daySummary.js` now groups ADJACENT periods that share a verdict into one
+clause ("בבוקר ובצהריים שטוח לגמרי, ובערב טוב") instead of always listing three, and
+collapses to one dedicated whole-day sentence when all three agree, using a separate
+`DAY_MOOD` phrasing set rather than an awkward "בבוקר ובצהריים ובערב X." Also rewrote the
+phrases themselves and the peak call-out for more voice.
+
+**Graph fixed: headroom, distortion, RTL.** Three real problems, one user report:
+- "Too stretched, values go out of view" -- the previous version mapped the actual data max
+  directly to the top pixel of the plot area, so a peak point (and its number, drawn ABOVE
+  the point) had nowhere to go and visually clipped or collided with the day-name row.
+  Fixed by introducing `LABEL_HEADROOM` (reserved space above the plot) and scaling the
+  height axis's domain to 1.25x the real max (not the exact max) -- the tallest point on
+  the chart now always sits below the very top of the drawable area, satisfying the
+  explicit ask ("the highest value shouldn't be the highest point on the board it's drawn
+  on") directly rather than by accident.
+- Visual distortion from `preserveAspectRatio="none"` scaling x and y by different factors
+  (the container's real width varies, the CSS height was fixed) -- added
+  `vector-effect="non-scaling-stroke"` to every stroked/circular element so line width and
+  the round peak markers stay visually correct regardless of the non-uniform scale, and
+  picked a WIDTH/HEIGHT ratio closer to the chart's typical real on-screen proportions so
+  what distortion remains is smaller.
+- RTL: caught in the same report as a related but separate bug -- an `<svg>` does not
+  auto-mirror its own coordinate space under `dir="rtl"` the way flex/grid layouts do, so
+  the x-axis was running left-to-right (today on the left) inside an otherwise fully RTL
+  page. One-line fix to the `x(i)` mapping, noted in more detail in the entry above.
+
+**New wave-hero banner** (`web/src/components/WaveHero.jsx`) on each beach's own page:
+beach name + today's date, centred, inside a simple blue rounded banner with a wave-shaped
+bottom edge (one decorative SVG path cut into the bottom of the rectangle -- not a
+functional chart, purely visual), replacing the plain `<h2>` that was there before.
+
+**Email alerts -- both the immediate blocker and a real feature.** User hit "שרת ההתראות
+עדיין לא הוגדר (חסר מפתח VAPID)" trying to use the watch button, and asked to be able to
+receive alerts by email. Two separate things:
+
+1. **The immediate VAPID error is fixed.** Ran the project's own
+   `scripts/alerting/generate_vapid_keys.py` (round-trips through `pywebpush`'s own loader
+   before printing, so a key it produces is guaranteed to load) and populated
+   `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` in the local `.env` (never committed -- hard rule
+   4). `GET /push-config` now returns a real key; Web Push itself works as soon as
+   notification permission is granted in a real browser.
+2. **Email as a genuinely new, opt-in second delivery channel**, asked directly which
+   sending mechanism to build against (a real external-service choice, not something to
+   guess at) -- Gmail SMTP with an app password, chosen for zero signup cost against
+   credentials the user already has. New `app/alerting/email.py::send_email`, plain stdlib
+   `smtplib` + STARTTLS on port 587, no new dependency. New nullable `email` column on both
+   `Subscription` and `SlotWatch` (opt-in per subscription/watch, not a global account
+   setting -- this project still has no real user accounts, only the existing opaque
+   `user_id`). Wired into both delivery paths (`app/alerting/slot_watch.py`'s `_deliver`,
+   `app/alerting/runner.py`'s subscription flow) ALONGSIDE push, not instead of it -- a
+   watch/subscription with an email set gets both channels; one channel being unconfigured
+   (blank `smtp_password`, same degrade-and-log pattern as blank VAPID keys) never blocks
+   the other, per hard rule 7. Frontend: `identity.js` gained `getUserEmail`/`setUserEmail`
+   (localStorage, parallel to the existing `getUserId`), a new email field in
+   `SubscriptionForm.jsx`'s Alerts tab that also applies to future watches created from
+   `BeachDay.jsx`. New `tests/test_email.py` (missing-credentials degradation, a real send
+   with SMTP mocked, a send failure degrading rather than raising).
+
+**Still needs the user's own action to actually send email**: `SMTP_USER`/`SMTP_PASSWORD`
+in `.env` are blank by default (a real Gmail address + a 16-character app password from
+Google Account -> Security -> App passwords) -- until filled in, email delivery degrades
+silently with a logged warning, same as push did before the VAPID fix above.
+
+115 tests passing. Clean production frontend build; same standing caveat as every frontend
+entry above about not being click-tested in an actual browser.

@@ -3,7 +3,7 @@ import { api } from "../api.js";
 import { WeatherIcon, WindArrowIcon } from "../components/Icons.jsx";
 import { buildDaySummary } from "../daySummary.js";
 import { hebrewDateLabel, hoursAtIntervalForDate, localHourLabel, localHourOfDay, todayOrTomorrowLabel } from "../dateUtils.js";
-import { getUserId } from "../identity.js";
+import { getUserEmail, getUserId } from "../identity.js";
 import { Num, PERIOD_HE } from "../labels.jsx";
 import { ensurePushRegistered } from "../push.js";
 
@@ -96,6 +96,7 @@ export default function BeachDay({ beach, rows, date, onBack }) {
         await ensurePushRegistered();
         const created = await api.createSlotWatch({
           user_id: getUserId(),
+          email: getUserEmail() || null,
           beach_id: beach.id,
           valid_at: hour.valid_at,
         });
