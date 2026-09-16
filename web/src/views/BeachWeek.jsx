@@ -100,7 +100,7 @@ export default function BeachWeek({ beach, rows, onSelectDay, onBack }) {
                       {best ? (
                         <span className={`pill wind-pill ${windPillClass(best.wind.speed_kmh, best.wind.relation_to_shore)}`}>
                           <WindArrowIcon directionDeg={best.wind.direction_deg} />
-                          <Num>{best.wind.speed_kmh != null ? best.wind.speed_kmh.toFixed(0) : "--"} קמ"ש</Num>
+                          {best.wind.speed_kmh != null ? `${best.wind.speed_kmh.toFixed(0)} קמ"ש` : "--"}
                         </span>
                       ) : (
                         "--"

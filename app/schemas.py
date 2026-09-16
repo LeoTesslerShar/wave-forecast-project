@@ -136,7 +136,7 @@ class QualityOut(BaseModel):
     # Hebrew label, e.g. "ברך" (knee) -- app/quality/body_reference.py. Derived from surf
     # height, unvalidated, display only.
     body_reference: str
-    # Hebrew labels, best-first, e.g. ["לוח קצר", "לוח ארוך"] -- app/quality/boards.py.
+    # Hebrew labels, best-first, e.g. ["שורט", "לונגבורד"] -- app/quality/boards.py.
     board_recommendation: list[str]
     # Air temperature -- MEASURED (forecast.temperature_c, from the same wind request),
     # not derived. weather_label/weather_icon are app/quality/weather.py's translation of

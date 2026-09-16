@@ -5,17 +5,19 @@ from app.quality.boards import LONGBOARD, SHORTBOARD, SOFT_TOP, recommend_boards
 
 
 def test_body_reference_monotonic_bands():
+    """Five bands (ankle/knee/waist/shoulder/head), per the user's own preferred set --
+    not the finer 10-band scale this started with."""
     assert classify_body_reference(None).label == "אין נתונים"
     assert classify_body_reference(0.1).label == "קרסול"
     assert classify_body_reference(0.5).label == "ברך"
-    assert classify_body_reference(1.0).label == "מעל מותניים"
-    assert classify_body_reference(2.5).label == "מעל הראש"
+    assert classify_body_reference(1.0).label == "מותן"
+    assert classify_body_reference(1.8).label == "ראש"
 
 
 def test_body_reference_boundaries_are_half_open():
     # Each band's own upper bound belongs to the NEXT band (strict <), not this one.
-    assert classify_body_reference(0.29).label == "קרסול"
-    assert classify_body_reference(0.30).label == "מעל קרסול"
+    assert classify_body_reference(0.39).label == "קרסול"
+    assert classify_body_reference(0.40).label == "ברך"
 
 
 def test_boards_small_surf_excludes_shortboard():

@@ -84,9 +84,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h1>התראות גלישה</h1>
-        <p className="tagline">
-          נוחות והשוואה בין חופים -- לא דיוק גובה גל עדיף. ערכים משוערים תמיד מסומנים "הערכה".
-        </p>
+        <p className="tagline">בלי ניחושים. תדעו בדיוק איפה שווה לגלוש היום.</p>
         <nav className="tabs">
           {TABS.map((t) => (
             <button

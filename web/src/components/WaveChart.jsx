@@ -23,7 +23,11 @@ export default function WaveChart({ rows }) {
   const hMax = Math.max(0.5, ...heights);
   const n = rows.length;
 
-  const x = (i) => PAD_SIDE + (i / (n - 1)) * (WIDTH - 2 * PAD_SIDE);
+  // Mirrored: SVG coordinate space is always LTR (x increases rightward) regardless of the
+  // page's dir="rtl" -- unlike flex/grid, an <svg> does not auto-flip its own drawing
+  // coordinates. Index 0 (today/the earliest hour) is placed at the RIGHT edge and time
+  // runs right-to-left, matching how the rest of the page reads.
+  const x = (i) => WIDTH - PAD_SIDE - (i / (n - 1)) * (WIDTH - 2 * PAD_SIDE);
   const yHeight = (v) => PAD_TOP + (1 - v / hMax) * (HEIGHT - PAD_TOP - PAD_BOTTOM);
   const yScore = (v) => PAD_TOP + (1 - v / 10) * (HEIGHT - PAD_TOP - PAD_BOTTOM);
 

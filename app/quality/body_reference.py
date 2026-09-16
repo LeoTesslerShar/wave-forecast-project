@@ -12,17 +12,14 @@ itself exists for.
 from dataclasses import dataclass
 
 # (upper_bound_m, hebrew_label) pairs, checked in ascending order -- first match wins.
+# Five bands, per the user's own preferred set (ankle/knee/waist/shoulder/head) rather than
+# the finer 10-band "above X" scale this started with -- simpler is what was asked for.
 BODY_REFERENCE_BANDS = [
-    (0.30, "קרסול"),
-    (0.45, "מעל קרסול"),
-    (0.60, "ברך"),
-    (0.75, "מעל ברך"),
-    (0.90, "מותניים"),
-    (1.10, "מעל מותניים"),
-    (1.40, "חזה"),
-    (1.70, "כתפיים"),
-    (2.00, "ראש"),
-    (float("inf"), "מעל הראש"),
+    (0.40, "קרסול"),
+    (0.70, "ברך"),
+    (1.10, "מותן"),
+    (1.60, "כתף"),
+    (float("inf"), "ראש"),
 ]
 
 

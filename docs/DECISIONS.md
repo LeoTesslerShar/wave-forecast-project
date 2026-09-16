@@ -1154,3 +1154,64 @@ touched in this entry), live API shape spot-checked against what the new compone
 actually read (`weather_icon`, `weather_label`, `temperature_c` all present and correctly
 typed), and the new CSS classes/Hebrew strings confirmed present in the built bundle. Same
 standing caveat as every frontend entry above: not click-tested in an actual browser.
+
+## 2026-09-16 -- RTL fixes, share buttons removed, simplified labels, day-summary humor line
+
+**Share buttons removed** entirely -- `BeachDay.jsx`'s header, `Icons.jsx`'s Facebook/
+WhatsApp icons, and the related CSS, per direct request.
+
+**Real RTL bug fixed, and a real principle correction**: swell height, period and wind
+speed were wrapped in the `<Num>` bidi-isolation helper (`dir="ltr"`), which was WRONG for
+these three -- forcing a plain "value + short Hebrew unit" pair like "6.1 שנ'" into an LTR
+island breaks its flow inside the surrounding RTL row/sentence, it does not fix anything.
+`<Num>` exists for genuinely ambiguous cases: a RANGE like the height pill's "40-70", where
+two numbers separated by a dash really can reorder under RTL without isolation. A single
+number-plus-unit needs no such help -- the Unicode Bidi Algorithm handles an embedded
+Western-digit run inside RTL text correctly on its own, which is how the vast majority of
+Hebrew web content already renders numbers. Removed `<Num>` from these three columns
+(`BeachDay.jsx`) and from the wind-speed pill wherever it's repeated (`BeachList.jsx`,
+`BeachWeek.jsx`); left it in place everywhere it wraps an actual range or the score number,
+since those are unaffected by this distinction.
+
+**The week/day chart was also silently wrong for RTL**, caught by a direct follow-up
+report: an `<svg>` does not auto-mirror its own coordinate space the way flex/grid layouts
+do under `dir="rtl"` -- the x-axis was running left-to-right (today on the left) inside an
+otherwise fully RTL page. Fixed with one change to `WaveChart.jsx`'s `x(i)` mapping,
+mirroring the whole plot so index 0 sits at the right edge and time runs right-to-left,
+matching how the rest of the page reads. Worth remembering for any future SVG work in this
+app: SVG coordinate space needs an explicit mirror, CSS `dir` does not do it automatically.
+
+**Simplified labels, per direct request**:
+- Board recommendation (`app/quality/boards.py`): `SOFT_TOP`/`LONGBOARD`/`SHORTBOARD`
+  renamed to the exact Hebrew terms asked for -- סופט / לונגבורד / שורט. Column header in
+  `BeachDay.jsx` renamed "לוחות" -> "גלשנים מתאימים". No backend test changes needed --
+  the tests import the constants, not hardcoded strings, so they stayed correct through the
+  rename automatically.
+- Body reference (`app/quality/body_reference.py`): collapsed from the original 10-band
+  "above X" scale down to exactly the 5 bands asked for -- קרסול / ברך / מותן / כתף / ראש
+  -- with new boundaries at 0.4/0.7/1.1/1.6m surf height. Updated
+  `tests/test_body_reference_and_boards.py`'s two band-boundary tests to match (the old
+  ones asserted labels -- e.g. "מעל מותניים" -- that no longer exist in the 5-band scheme).
+
+**Tagline replaced** ("נוחות והשוואה בין חופים -- לא דיוק גובה גל עדיף..." -> "בלי
+ניחושים. תדעו בדיוק איפה שווה לגלוש היום.") -- more direct, more surf-voice, per request
+for something that "pulls the surfer in" more than the original honesty-statement framing.
+The honesty framing itself is not lost -- it lives in the confidence badges and the
+per-page honesty notes already in place, not the one-line tagline.
+
+**New: a humorous day-summary sentence** (`web/src/daySummary.js`, new), shown at the top
+of `BeachDay.jsx` above the table. Purely client-side presentational text generation --
+picks the hours closest to 08:00/13:00/19:00 local from the day's already-fetched,
+already-scored rows, phrases each one's existing `quality_verdict` (kept as the English
+wire identifier everywhere else) through a new Hebrew humor dictionary distinct from
+`labels.jsx`'s plain badge labels, and separately calls out the day's peak hour BY TIME
+only when it's actually good (`quality_score >= 6.0` -- "worth reporting" per the request,
+not just the best of a mediocre day). Never recomputes or overrides the verdict/score
+themselves, only picks which already-computed hours to talk about and how.
+
+Verified: backend suite unaffected (112/112 -- board/body-reference relabelling required no
+production logic change, only the two test assertions noted above), clean production
+frontend build. Same standing caveat as every frontend entry above: not click-tested in an
+actual browser, including the RTL chart mirror and the bidi fix -- both are exactly the
+kind of thing that's easy to get subtly wrong without visual confirmation, so these are
+worth a deliberate look before trusting them fully.

@@ -87,7 +87,7 @@ export default function BeachList({ beaches, error, qualityByBeach, onSelectBeac
                   <td>
                     <span className={`pill wind-pill ${windPillClass(now.wind.speed_kmh, now.wind.relation_to_shore)}`}>
                       <WindArrowIcon directionDeg={now.wind.direction_deg} />
-                      <Num>{now.wind.speed_kmh != null ? now.wind.speed_kmh.toFixed(0) : "--"} קמ"ש</Num>
+                      {now.wind.speed_kmh != null ? `${now.wind.speed_kmh.toFixed(0)} קמ"ש` : "--"}
                     </span>
                   </td>
                 </>

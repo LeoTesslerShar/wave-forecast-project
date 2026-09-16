@@ -13,9 +13,9 @@ Reasoning, stated plainly since it's not derived from anything measured:
 """
 from dataclasses import dataclass
 
-SOFT_TOP = "סופט טופ"
-LONGBOARD = "לוח ארוך"
-SHORTBOARD = "לוח קצר"
+SOFT_TOP = "סופט"
+LONGBOARD = "לונגבורד"
+SHORTBOARD = "שורט"
 
 SMALL_MAX_M = 0.5  # below this: too weak to plane a shortboard
 BIG_MIN_M = 1.3  # at/above this: too steep/fast for a longboard, UNLESS period is long

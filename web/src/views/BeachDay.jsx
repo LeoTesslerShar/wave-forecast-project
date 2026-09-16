@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
-import { FacebookIcon, WeatherIcon, WhatsAppIcon, WindArrowIcon } from "../components/Icons.jsx";
+import { WeatherIcon, WindArrowIcon } from "../components/Icons.jsx";
+import { buildDaySummary } from "../daySummary.js";
 import { hebrewDateLabel, hoursAtIntervalForDate, localHourLabel, localHourOfDay, todayOrTomorrowLabel } from "../dateUtils.js";
 import { getUserId } from "../identity.js";
 import { Num, PERIOD_HE } from "../labels.jsx";
@@ -39,29 +40,19 @@ function cm(m) {
   return m == null ? null : Math.round(m * 100);
 }
 
-function shareText(beachName, dateLabel) {
-  return `תחזית גלישה ל${beachName}, ${dateLabel}`;
-}
-
-async function share(beachName, dateLabel) {
-  const text = shareText(beachName, dateLabel);
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: text, url: location.href });
-      return;
-    } catch {
-      /* user cancelled -- fall through to nothing */
-      return;
-    }
-  }
-  window.open(`https://wa.me/?text=${encodeURIComponent(`${text} ${location.href}`)}`, "_blank");
-}
-
-/** One day, one beach, 3-hour intervals. Header bar (date + today/tomorrow label + share),
- * then a 9-column table: hour, wave height (range), score, body-reference, boards, swell
- * height, period, wind speed, wind direction -- exactly the fields asked for, in that
- * order. No temperature column: this project has no air-temperature data source, and
- * showing one would mean inventing a number (hard rule 1 forbids it). */
+/** One day, one beach, 3-hour intervals. Header bar (date + today/tomorrow label), a
+ * humorous morning/noon/evening summary, then a 9-column table: hour, wave height (range),
+ * score, body-reference, boards, swell height, period, wind speed, wind direction --
+ * exactly the fields asked for, in that order. No temperature column beyond the hour cell's
+ * own reading: this project has no air-temperature data source beyond what's already
+ * wired into that cell, and showing an invented one anywhere else would violate hard rule 1.
+ *
+ * Swell height / period / wind speed are plain text, NOT wrapped in the <Num> bidi-isolation
+ * helper other numeric values use -- a simple "value + short Hebrew unit" pair (e.g. "6.1
+ * שנ'") reads correctly in normal RTL flow on its own; forcing it into an LTR island was
+ * what actually broke these three columns' layout, not what fixed it. <Num> stays reserved
+ * for genuinely ambiguous cases -- ranges like the height pill's "40-70", where two numbers
+ * separated by a dash really can reorder under RTL without isolation. */
 export default function BeachDay({ beach, rows, date, onBack }) {
   const [watches, setWatches] = useState(null); // valid_at -> watch row, for THIS beach
   const [busyValidAt, setBusyValidAt] = useState(null);
@@ -87,6 +78,7 @@ export default function BeachDay({ beach, rows, date, onBack }) {
 
   const dayHours = rows === null ? null : hoursAtIntervalForDate(rows, date);
   const nowIso = new Date().toISOString();
+  const summary = dayHours ? buildDaySummary(dayHours) : null;
 
   async function toggleWatch(hour) {
     setWatchError(null);
@@ -134,22 +126,9 @@ export default function BeachDay({ beach, rows, date, onBack }) {
             <Num>{hebrewDateLabel(date)}</Num>
           </span>
         </div>
-        <div className="day-header-share">
-          <span className="muted small">שתף</span>
-          <button className="icon-btn" onClick={() => share(beachName, dateLabel)} title="שתף בוואטסאפ">
-            <WhatsAppIcon />
-          </button>
-          <button
-            className="icon-btn"
-            onClick={() =>
-              window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(location.href)}`, "_blank")
-            }
-            title="שתף בפייסבוק"
-          >
-            <FacebookIcon />
-          </button>
-        </div>
       </div>
+
+      {summary && <p className="day-summary">{summary}</p>}
 
       {watchError && <p className="error">{watchError}</p>}
       {dayHours === null && <p className="muted">טוען תחזית...</p>}
@@ -164,7 +143,7 @@ export default function BeachDay({ beach, rows, date, onBack }) {
                 <th>גובה גלישה</th>
                 <th>ציון</th>
                 <th>יחס לגוף</th>
-                <th>לוחות</th>
+                <th>גלשנים מתאימים</th>
                 <th>גובה סוול</th>
                 <th>מחזור</th>
                 <th>מהירות רוח</th>
@@ -201,15 +180,15 @@ export default function BeachDay({ beach, rows, date, onBack }) {
                     </td>
                     <td>{h.body_reference}</td>
                     <td className="cell-boards">{h.board_recommendation.join(" / ") || "--"}</td>
-                    <td>{h.swell_height_m != null ? <Num>{h.swell_height_m.toFixed(2)} מ'</Num> : "--"}</td>
+                    <td>{h.swell_height_m != null ? `${h.swell_height_m.toFixed(2)} מ'` : "--"}</td>
                     <td>
-                      {h.period_s != null ? <Num>{h.period_s.toFixed(1)} שנ'</Num> : "--"} (
+                      {h.period_s != null ? `${h.period_s.toFixed(1)} שנ'` : "--"} (
                       {PERIOD_HE[h.period_band] || h.period_band})
                     </td>
                     <td>
                       <span className={`pill wind-pill ${windPillClass(h.wind.speed_kmh, h.wind.relation_to_shore)}`}>
                         <WindArrowIcon directionDeg={h.wind.direction_deg} />
-                        <Num>{h.wind.speed_kmh != null ? h.wind.speed_kmh.toFixed(0) : "--"} קמ"ש</Num>
+                        {h.wind.speed_kmh != null ? `${h.wind.speed_kmh.toFixed(0)} קמ"ש` : "--"}
                       </span>
                     </td>
                     <td>{h.wind.direction_deg != null ? <Num>{h.wind.direction_deg.toFixed(0)}°</Num> : "--"}</td>
@@ -232,7 +211,7 @@ export default function BeachDay({ beach, rows, date, onBack }) {
 
       {dayHours !== null && dayHours.length > 0 && (
         <p className="muted small honesty-note">
-          גובה גלישה, ציון, יחס לגוף והמלצת לוחות הם הערכות לא מאומתות של המערכת -- לא
+          גובה גלישה, ציון, יחס לגוף והמלצת גלשנים הם הערכות לא מאומתות של המערכת -- לא
           מדידה. מהירות וכיוון רוח, גובה סוול, מחזור, טמפרטורה ומזג האוויר מגיעים ישירות
           ממודל התחזית.
         </p>
