@@ -173,6 +173,45 @@ toggle. Navigation is hand-rolled in `App.jsx` as `{view, beachId, date}` state,
   and `web/scripts/verify_subscription.mjs` reproduce the ranked list and the
   create-and-confirm subscription flow against live data.
 
+## Performance work along the way
+
+Two real, measured slowdowns were found and fixed during the build -- not guessed at, both
+profiled before and after:
+
+- **The quality endpoint was the hidden cost of every page load.** `GET
+  /beaches/{id}/quality?hours=96` measured **2.6s per beach**; the ranked beach-list view
+  (8 beaches fetched in parallel from the browser) took **10.4s end to end** -- this was the
+  actual "the app feels slow" the user was seeing. Profiled with `cProfile`
+  (`docker compose exec api python -c "..."`), and the entire cost turned out to be in
+  `app/exposure/obstruction.py`, not the database or the upstream forecast call, from two
+  compounding bugs:
+  1. **Redundant re-projection.** Every ray-cast sample re-projected all ~226 OSM structure
+     lines from lat/lon to local XY from scratch -- ~2,160 samples per 96-hour request meant
+     ~5.5 million redundant projection calls. Fixed with an `lru_cache` keyed on the beach's
+     *exact* latitude (a first attempt rounded the cache key to raise the hit rate across
+     nearby beaches, which turned out to be a real correctness bug -- it silently flipped
+     one beach's obstruction result right at a 150m threshold boundary; caught by the test
+     suite, not by inspection, before it shipped).
+  2. **O(all structures) linear scan per sample**, unaffected by fix 1. Re-profiling showed
+     the nearest-structure search was still the dominant cost even with projection cached.
+     Fixed with a uniform 200m spatial grid: a query now only inspects the sample's own grid
+     cell and its 8 neighbours instead of scanning all ~226 structure lines.
+
+  **Measured result** (same endpoint, same 96-hour request, rebuilt container): single-beach
+  `/quality?hours=96` went from **2.6s to ~0.08s** (~33x); the realistic 8-beaches-in-parallel
+  ranked-list load went from **10.4s to ~0.36s** (~29x), with the caching layer barely
+  mattering any more once the algorithmic fix was in. Full test suite green throughout,
+  including a new grid-vs-exhaustive-scan correctness test. Full writeup:
+  `docs/DECISIONS.md`, "Obstruction check was the hidden cost of every beach's quality
+  endpoint."
+- **Redundant frontend fetching, fixed by caching per session instead of per view.** Before
+  the drill-down rebuild, the beach-list view re-fetched each beach's full 168-hour quality
+  series on every date change, and the single-beach breakdown view re-fetched it again on
+  every navigation -- the same data, requested repeatedly. `App.jsx` now fetches each beach's
+  series exactly **once per browser session** (tracked in a `Set` of already-fetched beach
+  ids) and every view (`BeachList` -> `BeachWeek` -> `BeachDay`) reduces that one cached
+  series client-side instead of triggering a new network round trip.
+
 ## Running it
 
 ```
