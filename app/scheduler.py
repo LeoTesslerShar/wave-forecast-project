@@ -12,6 +12,7 @@ Two independent jobs on two different cadences:
     slot_watch.py) has neither problem.
 """
 import logging
+from datetime import UTC, datetime
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -57,17 +58,26 @@ def start_scheduler() -> AsyncIOScheduler:
     global _scheduler
     settings = get_settings()
     _scheduler = AsyncIOScheduler()
+    # misfire_grace_time=None: a dev machine that sleeps freezes the container's wall clock
+    # along with it. APScheduler's default grace window (a few seconds) is always blown by
+    # the time it wakes, so without this the job doesn't just run late -- it's skipped
+    # entirely, rescheduled for the NEXT interval boundary, which can be hours further out
+    # still. None disables the grace check so a late-woken job runs immediately instead of
+    # silently skipping (docs/DECISIONS.md).
     _scheduler.add_job(
         _ingestion_job,
         "interval",
         minutes=settings.ingestion_schedule_minutes,
         id="ingestion_cycle",
+        misfire_grace_time=None,
+        next_run_time=datetime.now(UTC),  # also run once immediately on every process start
     )
     _scheduler.add_job(
         _slot_watch_job,
         "interval",
         minutes=settings.slot_watch_dispatch_minutes,
         id="slot_watch_dispatch",
+        misfire_grace_time=None,
     )
     _scheduler.start()
     return _scheduler

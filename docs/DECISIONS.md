@@ -1285,3 +1285,40 @@ silently with a logged warning, same as push did before the VAPID fix above.
 
 115 tests passing. Clean production frontend build; same standing caveat as every frontend
 entry above about not being click-tested in an actual browser.
+
+## 2026-09-29 -- Scheduled ingestion silently skipped runs after the dev machine slept
+
+User asked "refresh the data, it's supposed to do that by itself no?" after data had gone
+stale multiple times across the week despite `app/scheduler.py` running an interval job
+every `INGESTION_SCHEDULE_MINUTES` (180). It was, and the schedule itself was never the
+problem -- confirmed from logs it fired correctly every 3h across a full day when the
+machine stayed on (2026-09-27 13:28 -> 2026-09-28 13:28, one run each interval).
+
+Root cause was APScheduler's default misfire handling, not a crash or a stopped process.
+When the host machine sleeps, the container process freezes with it -- wall-clock time
+passes but no CPU time does. On wake, APScheduler sees the interval's fire time is long
+past, logs `"Run time of job ... was missed by 0:32:51"`, and -- because no
+`misfire_grace_time` was set (APScheduler's tiny default grace window is always blown by a
+multi-hour sleep) -- **skips that run entirely** and reschedules for the next interval
+boundary, which can be hours further out still. Confirmed directly in the logs: ingestion
+went silent for ~16.5h overnight (2026-09-28 15:28 -> 2026-09-29 08:00), and the very next
+scheduled ingestion attempt was itself skipped too (`"missed by 0:32:51"`, rescheduled to
+10:28), leaving the app stale until a manual trigger.
+
+Fixed with two changes to `start_scheduler()` (`app/scheduler.py`), both judgement calls
+appropriate for a single-instance dev deployment, not a clustered production one:
+
+- `misfire_grace_time=None` on both jobs -- disables the grace-window check entirely, so a
+  job that wakes up late runs immediately instead of silently skipping to the next boundary.
+  Safe here because there is exactly one worker process; the same setting on a multi-worker
+  deployment could cause a thundering-herd of simultaneous catch-up runs, which is not this
+  project's shape (PROMPT.md, single dev deployment).
+- `next_run_time=datetime.now(UTC)` on the ingestion job's `add_job()` call -- also fires
+  once immediately on every process start (container create/recreate, not just restart),
+  rather than waiting a full first interval before the app has any data at all.
+
+Verified: rebuilt and recreated the `api` container, confirmed in logs that ingestion fired
+within the same second the scheduler started (`"Running job \"_ingestion_job\" ... (scheduled
+at 2026-09-29 09:03:46...)"`, immediately followed by `"forecast ingestion run complete"`),
+`/health` returned to `"ok"` unprompted, and the full 115-test suite still passes (this
+touches only scheduler wiring, no test exercises `start_scheduler()` directly).
